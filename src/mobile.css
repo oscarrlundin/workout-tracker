@@ -1,0 +1,12 @@
+/* Safe area padding on iPhone notch/home bar */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-top    { padding-top: env(safe-area-inset-top); }
+
+/* Make taps feel “app-like” */
+:root { -webkit-tap-highlight-color: rgba(0,0,0,0); }
+
+/* Prevent accidental text selection while tapping UI */
+* { -webkit-touch-callout: none; user-select: none; }
+
+/* Allow selecting in inputs though */
+input, textarea { user-select: text; -webkit-user-select: text; }
