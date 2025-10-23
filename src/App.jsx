@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   db,
   addExercise,
@@ -13,6 +13,9 @@ import {
   updateSet,
   deleteSet,
   deleteExercise,
+  exportAll,
+  importAll,
+  updateExerciseName,
 } from "./db";
 import { liveQuery } from "dexie";
 import {
@@ -25,9 +28,9 @@ import {
   CartesianGrid,
 } from "recharts";
 
-const TABS = ["Log", "Progress", "Exercises"];
+const TABS = ["Log", "Progress", "Exercises", "Settings"];
 
-// Live data hook using Dexie's liveQuery
+/* ---------- Shared hooks & utils ---------- */
 function useLiveQueryHook(queryFn, deps = []) {
   const [data, setData] = useState(null);
   useEffect(() => {
@@ -49,12 +52,26 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function downloadJSON(filename, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ---------- App ---------- */
 export default function App() {
   const [tab, setTab] = useState("Log");
 
-  // (Optional) Gate desktop users since this is mobile-first
+  // Mobile gate (optional)
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
   if (!isMobile) {
     return (
       <div className="min-h-[100svh] grid place-items-center p-8 text-center">
@@ -72,13 +89,13 @@ export default function App() {
     <div className="min-h-[100svh] max-w-xl mx-auto p-4 safe-top safe-bottom bg-white">
       <h1 className="text-2xl font-bold">Workout Tracker (Local)</h1>
 
-      {/* Main content (add bottom padding so it doesn't hide behind the tab bar) */}
       <div className="mt-4 pb-24">
         {tab === "Log" && <LogTab useLiveQuery={useLiveQueryHook} />}
         {tab === "Progress" && <ProgressTab useLiveQuery={useLiveQueryHook} />}
         {tab === "Exercises" && (
           <ExercisesTab useLiveQuery={useLiveQueryHook} />
         )}
+        {tab === "Settings" && <SettingsTab />}
       </div>
 
       {/* Sticky bottom tab bar */}
@@ -111,13 +128,30 @@ function ExercisesTab({ useLiveQuery }) {
   async function handleAdd(e) {
     e.preventDefault();
     try {
-      await addExercise({ name, type });
+      if (!name.trim()) return;
+      await addExercise({ name: name.trim(), type });
       setName("");
       setType("weighted");
       setError("");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to add exercise");
     }
+  }
+
+  async function onDeleteExercise(id, label) {
+    const ok = window.confirm(
+      `Delete "${label}"?\n\nThis will also delete all sets logged for this exercise.`
+    );
+    if (!ok) return;
+    await deleteExercise(id);
+  }
+
+  async function onRenameExercise(ex) {
+    const next = window.prompt("Rename exercise", ex.name);
+    if (next == null) return; // cancel
+    const clean = next.trim();
+    if (!clean || clean === ex.name) return;
+    await updateExerciseName(ex.id, clean);
   }
 
   return (
@@ -138,7 +172,10 @@ function ExercisesTab({ useLiveQuery }) {
           <option value="weighted">Weighted</option>
           <option value="bodyweight">Bodyweight</option>
         </select>
-        <button className="min-h-[44px] px-4 rounded bg-black text-white">
+        <button
+          className="min-h-[44px] px-4 rounded bg-black text-white"
+          type="submit"
+        >
           Add
         </button>
       </form>
@@ -148,17 +185,26 @@ function ExercisesTab({ useLiveQuery }) {
         {(exercises ?? []).map((ex) => (
           <li key={ex.id} className="border rounded p-2">
             <div className="flex justify-between items-center">
-              <div>
-                <span className="font-medium">{ex.name}</span>
+              <div className="min-w-0">
+                <span className="font-medium truncate">{ex.name}</span>
                 <span className="ml-2 text-xs text-gray-500">{ex.type}</span>
               </div>
-              <button
-                className="min-h-[36px] px-3 border rounded"
-                onClick={() => deleteExercise(ex.id)}
-                title="Delete exercise and its sets"
-              >
-                Delete
-              </button>
+              <div className="flex gap-2">
+                <button
+                  className="min-h-[36px] px-3 border rounded"
+                  onClick={() => onRenameExercise(ex)}
+                  title="Rename exercise"
+                >
+                  Rename
+                </button>
+                <button
+                  className="min-h-[36px] px-3 border rounded"
+                  onClick={() => onDeleteExercise(ex.id, ex.name)}
+                  title="Delete exercise and its sets"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </li>
         ))}
@@ -191,9 +237,10 @@ function LogTab({ useLiveQuery }) {
   }, [workoutsToday]);
 
   function handleNumSetsChange(n) {
-    setNumSets(n);
+    const safe = Number.isFinite(n) && n > 0 ? Math.min(n, 20) : 1;
+    setNumSets(safe);
     setSets(
-      Array.from({ length: n }, (_, i) => sets[i] ?? { reps: "", weight: "" })
+      Array.from({ length: safe }, (_, i) => sets[i] ?? { reps: "", weight: "" })
     );
   }
 
@@ -222,6 +269,12 @@ function LogTab({ useLiveQuery }) {
     }
     // reset inputs
     setSets([{ reps: "", weight: "" }]);
+  }
+
+  async function onDeleteSet(id) {
+    const ok = window.confirm("Delete this set?");
+    if (!ok) return;
+    await deleteSet(id);
   }
 
   return (
@@ -317,7 +370,7 @@ function LogTab({ useLiveQuery }) {
         <ul className="space-y-2">
           {(setsForWorkout ?? []).map((s) => (
             <li key={s.id} className="border rounded p-2 text-sm">
-              <RowForSet s={s} />
+              <RowForSet s={s} onDelete={onDeleteSet} />
             </li>
           ))}
           {workoutId && (setsForWorkout?.length ?? 0) === 0 && (
@@ -329,7 +382,7 @@ function LogTab({ useLiveQuery }) {
   );
 }
 
-function RowForSet({ s }) {
+function RowForSet({ s, onDelete }) {
   const [exercise, setExercise] = useState(null);
   const [editing, setEditing] = useState(false);
   const [reps, setReps] = useState(s.reps);
@@ -344,7 +397,7 @@ function RowForSet({ s }) {
   async function onSave() {
     const repsNum = Number(reps);
     const weightNum = weight === "" ? null : Number(weight);
-    if (!repsNum || repsNum < 0) return;
+    if (!Number.isFinite(repsNum) || repsNum <= 0) return;
     await updateSet(s.id, { reps: repsNum, weightKg: weightNum });
     setEditing(false);
   }
@@ -392,7 +445,7 @@ function RowForSet({ s }) {
             </button>
             <button
               className="min-h-[36px] px-3 border rounded"
-              onClick={() => deleteSet(s.id)}
+              onClick={() => onDelete(s.id)}
             >
               Delete
             </button>
@@ -429,7 +482,6 @@ function ProgressTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [exerciseId, setExerciseId] = useState("");
   const [metric, setMetric] = useState("maxWeight"); // 'maxWeight' | 'bestReps' | 'est1RM'
-
   const [points, setPoints] = useState([]);
 
   useEffect(() => {
@@ -537,6 +589,151 @@ function ProgressTab({ useLiveQuery }) {
           <strong>Best:</strong> {Math.max(...series.map((s) => s.y))} {unit}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ---------- Settings Tab (Export / Import) ---------- */
+function SettingsTab() {
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [mode, setMode] = useState("replace"); // 'replace' | 'merge'
+  const fileInputRef = useRef();
+
+  async function handleExport() {
+    try {
+      setExporting(true);
+      const payload = await exportAll();
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadJSON(`workout-tracker-backup-${ts}.json`, payload);
+      alert("Export complete. File downloaded.");
+    } catch (e) {
+      console.error(e);
+      alert("Export failed. See console for details.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setImporting(true);
+
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      if (!json || typeof json !== "object" || !json.tables) {
+        alert("Invalid backup file.");
+        return;
+      }
+
+      if (mode === "replace") {
+        const ok = window.confirm(
+          "Replace mode will OVERWRITE all current data with the file contents. Proceed?"
+        );
+        if (!ok) return;
+      } else {
+        const ok = window.confirm(
+          "Merge mode will try to upsert by ID. If IDs overlap from another device, data may collide. Proceed?"
+        );
+        if (!ok) return;
+      }
+
+      // Optional: pre-import auto-backup
+      try {
+        const pre = await exportAll();
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        downloadJSON(`pre-import-backup-${ts}.json`, pre);
+      } catch {
+        // ignore backup errors
+      }
+
+      await importAll(json, { mode });
+      alert("Import complete.");
+      // Clear file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (e2) {
+      console.error(e2);
+      alert("Import failed. Make sure the file is a valid backup JSON.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="border rounded p-3">
+        <h3 className="font-semibold">Backup & Restore</h3>
+        <p className="text-sm text-gray-600 mt-1">
+          Export all local data (exercises, workouts, sets) to a JSON file, or
+          import from a previous backup.
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            className="min-h-[44px] px-4 rounded bg-black text-white disabled:opacity-60"
+            disabled={exporting}
+            onClick={handleExport}
+          >
+            {exporting ? "Exporting…" : "Export JSON"}
+          </button>
+
+          <label className="min-h-[44px] px-4 rounded border flex items-center gap-2">
+            <span>Import JSON</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+          </label>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <label className="text-sm text-gray-700">Import mode</label>
+          <select
+            className="h-10 border rounded px-3 text-base"
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            disabled={importing}
+          >
+            <option value="replace">Replace (recommended)</option>
+            <option value="merge">Merge (advanced)</option>
+          </select>
+        </div>
+
+        {importing && (
+          <p className="text-sm text-gray-600 mt-2">Importing… please wait.</p>
+        )}
+      </section>
+
+      <section className="border rounded p-3">
+        <h3 className="font-semibold">Danger Zone</h3>
+        <p className="text-sm text-gray-600 mt-1">
+          You can clear all local data if needed (use Export first).
+        </p>
+        <button
+          className="mt-2 min-h-[44px] px-4 rounded border"
+          onClick={async () => {
+            const ok = window.confirm(
+              "This will delete ALL local data (exercises, workouts, sets). Are you sure?"
+            );
+            if (!ok) return;
+            await db.transaction("rw", [db.exercises, db.workouts, db.sets], async () => {
+              await db.sets.clear();
+              await db.workouts.clear();
+              await db.exercises.clear();
+            });
+            alert("All local data cleared.");
+          }}
+        >
+          Clear all data
+        </button>
+      </section>
     </div>
   );
 }
