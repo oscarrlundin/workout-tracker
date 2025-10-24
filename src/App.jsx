@@ -17,6 +17,9 @@ import {
   importAll,
   updateExerciseName,
   updateExerciseTimed,
+  getPR,
+  updatePRForExercise,
+  recalcAllPRs,
 } from "./db";
 import { liveQuery } from "dexie";
 import {
@@ -74,9 +77,33 @@ function formatDuration(sec) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/* ---------- Toast (tiny) ---------- */
+function Toast({ message }) {
+  if (!message) return null;
+  return (
+    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50">
+      <div className="rounded-full bg-black text-white px-4 py-2 text-sm shadow-md">
+        {message}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- App ---------- */
 export default function App() {
   const [tab, setTab] = useState("Log");
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    // Recalculate PRs once on app start (safe & fast at current scales)
+    recalcAllPRs();
+  }, []);
+
+  function showToast(msg) {
+    setToast(msg);
+    window.clearTimeout(showToast._t);
+    showToast._t = window.setTimeout(() => setToast(""), 2200);
+  }
 
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   if (!isMobile) {
@@ -97,13 +124,16 @@ export default function App() {
       <h1 className="text-2xl font-bold">Workout Tracker (Local)</h1>
 
       <div className="mt-4 pb-24">
-        {tab === "Log" && <LogTab useLiveQuery={useLiveQueryHook} />}
+        {tab === "Log" && <LogTab useLiveQuery={useLiveQueryHook} showToast={showToast} />}
         {tab === "Progress" && <ProgressTab useLiveQuery={useLiveQueryHook} />}
         {tab === "Exercises" && (
           <ExercisesTab useLiveQuery={useLiveQueryHook} />
         )}
         {tab === "Settings" && <SettingsTab />}
       </div>
+
+      {/* Toast */}
+      <Toast message={toast} />
 
       {/* Sticky bottom tab bar */}
       <nav className="fixed bottom-0 left-0 right-0 border-t bg-white safe-bottom">
@@ -125,7 +155,7 @@ export default function App() {
   );
 }
 
-/* ---------- Exercises Tab ---------- */
+/* ---------- Exercises Tab (unchanged behavior except earlier UI polish) ---------- */
 function ExercisesTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [name, setName] = useState("");
@@ -166,11 +196,9 @@ function ExercisesTab({ useLiveQuery }) {
 
   async function saveEdit(ex) {
     try {
-      // Save name first (always allowed)
       if (editName.trim() && editName.trim() !== ex.name) {
         await updateExerciseName(ex.id, editName.trim());
       }
-      // Then try toggling timed (may be blocked if sets exist)
       if (editTimed !== !!ex.isTimed) {
         await updateExerciseTimed(ex.id, editTimed);
       }
@@ -188,7 +216,6 @@ function ExercisesTab({ useLiveQuery }) {
     await deleteExercise(id);
   }
 
-  // tiny inline SVGs (no deps)
   const PencilIcon = (props) => (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M12 20h9" />
@@ -209,7 +236,6 @@ function ExercisesTab({ useLiveQuery }) {
     <div className="overflow-x-hidden">
       <h2 className="font-semibold">Your exercises</h2>
 
-      {/* Vertical form to avoid horizontal scroll */}
       <form onSubmit={handleAdd} className="mt-3 grid grid-cols-1 gap-2">
         <input
           className="h-10 border rounded px-3 text-base w-full"
@@ -250,10 +276,8 @@ function ExercisesTab({ useLiveQuery }) {
       <ul className="mt-4 space-y-2">
         {(exercises ?? []).map((ex) => (
           <li key={ex.id} className="border rounded p-2">
-            {/* Header row: name/badges (wrap) + icon buttons */}
             <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
               <div className="min-w-0">
-                {/* Allow wrapping so full name is visible */}
                 <div className="font-medium break-words">{ex.name}</div>
                 <div className="mt-1 flex flex-wrap gap-1">
                   <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
@@ -270,7 +294,11 @@ function ExercisesTab({ useLiveQuery }) {
               <div className="flex gap-2 shrink-0">
                 <button
                   className="min-h-[36px] px-2 border rounded flex items-center justify-center"
-                  onClick={() => startEdit(ex)}
+                  onClick={() => {
+                    setEditingId(ex.id);
+                    setEditName(ex.name);
+                    setEditTimed(!!ex.isTimed);
+                  }}
                   aria-label="Edit exercise (name & timed)"
                   title="Edit"
                 >
@@ -287,7 +315,6 @@ function ExercisesTab({ useLiveQuery }) {
               </div>
             </div>
 
-            {/* Inline editor (only for the row being edited) */}
             {editingId === ex.id && (
               <div className="mt-3 border-t pt-3">
                 <div className="grid grid-cols-1 gap-2">
@@ -315,7 +342,11 @@ function ExercisesTab({ useLiveQuery }) {
                   </button>
                   <button
                     className="min-h-[36px] px-4 rounded border"
-                    onClick={cancelEdit}
+                    onClick={() => {
+                      setEditingId(null);
+                      setEditName("");
+                      setEditTimed(false);
+                    }}
                   >
                     Cancel
                   </button>
@@ -337,19 +368,15 @@ function ExercisesTab({ useLiveQuery }) {
   );
 }
 
-
-/* ---------- Log Tab ---------- */
-function LogTab({ useLiveQuery }) {
+/* ---------- Log Tab (calls PR updates + toast) ---------- */
+function LogTab({ useLiveQuery, showToast }) {
   const [dateISO, setDateISO] = useState(todayISO());
   const [workoutId, setWorkoutId] = useState(null);
   const exercises = useLiveQuery(getExercises, []);
   const [selectedExerciseId, setSelectedExerciseId] = useState("");
 
-  // Sets count: UI-friendly string + numeric state
   const [numSetsInput, setNumSetsInput] = useState("3");
   const [numSets, setNumSets] = useState(3);
-
-  // For each set row we store either reps/weight OR duration fields while editing
   const [sets, setSets] = useState([{ reps: "", weight: "", min: "", sec: "" }]);
 
   const workoutsToday = useLiveQuery(() => getWorkoutsByDate(dateISO), [dateISO]);
@@ -369,15 +396,12 @@ function LogTab({ useLiveQuery }) {
     else setWorkoutId(null);
   }, [workoutsToday]);
 
-  // Keep sets array in sync with count
   function syncSetArray(nextCount) {
     const count = Math.max(1, Math.min(nextCount, 20)); // 1..20
     setNumSets(count);
     setSets((prev) => {
       const next = Array.from({ length: count }, (_, i) => {
-        return (
-          prev[i] ?? { reps: "", weight: "", min: "", sec: "" }
-        );
+        return prev[i] ?? { reps: "", weight: "", min: "", sec: "" };
       });
       return next;
     });
@@ -410,6 +434,20 @@ function LogTab({ useLiveQuery }) {
     return id;
   }
 
+  function prToastFromImprovements(exName, improvements) {
+    if (!improvements) return;
+    const parts = [];
+    if (improvements.bestWeight)
+      parts.push(`Max Weight ${improvements.bestWeight.new} kg`);
+    if (improvements.best1RM)
+      parts.push(`Est 1RM ${improvements.best1RM.new} kg`);
+    if (improvements.bestReps)
+      parts.push(`Best Reps ${improvements.bestReps.new}`);
+    if (improvements.bestDurationSec)
+      parts.push(`Best Duration ${formatDuration(improvements.bestDurationSec.new)}`);
+    if (parts.length) showToast(`🎉 New PR – ${exName}: ${parts[0]}`);
+  }
+
   async function addExerciseSets() {
     if (!selectedExerciseId) return;
     const wid = await ensureWorkout();
@@ -434,8 +472,7 @@ function LogTab({ useLiveQuery }) {
       } else {
         const repsNum = Number(row.reps);
         if (!Number.isFinite(repsNum) || repsNum <= 0) continue;
-        const weightNum =
-          row.weight === "" ? null : Number(row.weight);
+        const weightNum = row.weight === "" ? null : Number(row.weight);
         await addSet({
           workoutId: wid,
           exerciseId: Number(selectedExerciseId),
@@ -446,14 +483,22 @@ function LogTab({ useLiveQuery }) {
         });
       }
     }
-    // reset inputs to a single empty row (keep count as-is)
+
+    // Re-evaluate PRs for this exercise and show toast if any improvement
+    const res = await updatePRForExercise(Number(selectedExerciseId));
+    prToastFromImprovements(selectedExercise?.name ?? "Exercise", res?.improvements);
+
+    // reset inputs (keep count)
     setSets([{ reps: "", weight: "", min: "", sec: "" }]);
   }
 
-  async function onDeleteSet(id) {
+  async function onDeleteSet(id, s) {
     const ok = window.confirm("Delete this set?");
     if (!ok) return;
-    await deleteSet(id);
+    const exerciseId = await deleteSet(id);
+    if (exerciseId) {
+      await updatePRForExercise(exerciseId);
+    }
   }
 
   return (
@@ -492,7 +537,6 @@ function LogTab({ useLiveQuery }) {
             ))}
           </select>
 
-          {/* Number of sets input with +/- and safe handling */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -530,7 +574,6 @@ function LogTab({ useLiveQuery }) {
             <div key={i} className="flex items-center gap-2">
               <span className="w-12 text-sm text-gray-600">Set {i + 1}</span>
 
-              {/* Timed vs Reps inputs */}
               {isTimed ? (
                 <>
                   <input
@@ -555,7 +598,6 @@ function LogTab({ useLiveQuery }) {
                     value={sets[i]?.sec ?? ""}
                     onChange={(e) => {
                       const next = [...sets];
-                      // clamp 0..59 visually later during save
                       next[i] = { ...(next[i] || {}), sec: e.target.value };
                       setSets(next);
                     }}
@@ -622,7 +664,7 @@ function LogTab({ useLiveQuery }) {
         <ul className="space-y-2">
           {(setsForWorkout ?? []).map((s) => (
             <li key={s.id} className="border rounded p-2 text-sm">
-              <RowForSet s={s} onDelete={onDeleteSet} />
+              <RowForSet s={s} onDelete={onDeleteSet} showToast={showToast} />
             </li>
           ))}
           {workoutId && (setsForWorkout?.length ?? 0) === 0 && (
@@ -634,11 +676,10 @@ function LogTab({ useLiveQuery }) {
   );
 }
 
-function RowForSet({ s, onDelete }) {
+function RowForSet({ s, onDelete, showToast }) {
   const [exercise, setExercise] = useState(null);
   const [editing, setEditing] = useState(false);
 
-  // Local edit state
   const [reps, setReps] = useState(s.reps ?? "");
   const [weight, setWeight] = useState(
     typeof s.weightKg === "number" ? String(s.weightKg) : ""
@@ -657,30 +698,47 @@ function RowForSet({ s, onDelete }) {
   const isTimed = !!exercise?.isTimed;
   const isWeighted = exercise?.type === "weighted";
 
+  function prToastFromImprovements(exName, improvements) {
+    if (!improvements) return;
+    const parts = [];
+    if (improvements.bestWeight)
+      parts.push(`Max Weight ${improvements.bestWeight.new} kg`);
+    if (improvements.best1RM)
+      parts.push(`Est 1RM ${improvements.best1RM.new} kg`);
+    if (improvements.bestReps)
+      parts.push(`Best Reps ${improvements.bestReps.new}`);
+    if (improvements.bestDurationSec)
+      parts.push(`Best Duration ${formatDuration(improvements.bestDurationSec.new)}`);
+    if (parts.length) showToast(`🎉 New PR – ${exName}: ${parts[0]}`);
+  }
+
   async function onSave() {
     if (isTimed) {
       const m = Number(min || 0);
       let sc = Number(sec || 0);
       if (!Number.isFinite(m) && !Number.isFinite(sc)) return;
-      // clamp seconds 0..59
       sc = Math.max(0, Math.min(59, sc));
       const total = Math.round((m >= 0 ? m : 0) * 60 + (sc >= 0 ? sc : 0));
       if (!total) return;
       const weightNum = isWeighted && weight !== "" ? Number(weight) : null;
-      await updateSet(s.id, {
+      const exerciseId = await updateSet(s.id, {
         durationSec: total,
         weightKg: Number.isFinite(weightNum) ? weightNum : null,
         reps: null,
       });
+      const res = await updatePRForExercise(exerciseId || s.exerciseId);
+      prToastFromImprovements(exercise?.name ?? "Exercise", res?.improvements);
     } else {
       const repsNum = Number(reps);
       if (!Number.isFinite(repsNum) || repsNum <= 0) return;
       const weightNum = weight === "" ? null : Number(weight);
-      await updateSet(s.id, {
+      const exerciseId = await updateSet(s.id, {
         reps: repsNum,
         weightKg: Number.isFinite(weightNum) ? weightNum : null,
         durationSec: null,
       });
+      const res = await updatePRForExercise(exerciseId || s.exerciseId);
+      prToastFromImprovements(exercise?.name ?? "Exercise", res?.improvements);
     }
     setEditing(false);
   }
@@ -764,7 +822,7 @@ function RowForSet({ s, onDelete }) {
             </button>
             <button
               className="min-h-[36px] px-3 border rounded"
-              onClick={() => onDelete(s.id)}
+              onClick={() => onDelete(s.id, s)}
             >
               Delete
             </button>
@@ -802,12 +860,14 @@ function RowForSet({ s, onDelete }) {
   );
 }
 
-/* ---------- Progress Tab ---------- */
+/* ---------- Progress Tab (shows PR summary) ---------- */
 function ProgressTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [exerciseId, setExerciseId] = useState("");
-  const [metric, setMetric] = useState("maxWeight"); // default for non-timed
+  const [metric, setMetric] = useState("maxWeight");
   const [points, setPoints] = useState([]);
+  const [pr, setPr] = useState(null);
+
   const selectedExercise = (exercises ?? []).find(
     (e) => String(e.id) === String(exerciseId)
   );
@@ -817,6 +877,7 @@ function ProgressTab({ useLiveQuery }) {
     (async () => {
       if (!exerciseId) {
         setPoints([]);
+        setPr(null);
         return;
       }
       const all = await getSetsForExercise(Number(exerciseId));
@@ -854,10 +915,13 @@ function ProgressTab({ useLiveQuery }) {
         .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
       setPoints(rows);
+
+      // load cached PRs
+      const prRow = await getPR(Number(exerciseId));
+      setPr(prRow || null);
     })();
   }, [exerciseId, isTimed]);
 
-  // Adjust metric automatically when switching exercise type
   useEffect(() => {
     if (isTimed) setMetric("bestDuration");
     else if (metric === "bestDuration") setMetric("maxWeight");
@@ -874,8 +938,7 @@ function ProgressTab({ useLiveQuery }) {
     return points.map((p) => ({ x: p.dateISO, y: p.est1RM }));
   }, [points, metric, isTimed]);
 
-  const unit =
-    isTimed ? "sec" : metric === "bestReps" ? "reps" : "kg";
+  const unit = isTimed ? "sec" : metric === "bestReps" ? "reps" : "kg";
 
   return (
     <div>
@@ -938,6 +1001,44 @@ function ProgressTab({ useLiveQuery }) {
           </div>
         )}
       </div>
+
+      {/* PR summary card */}
+      {pr && (
+        <div className="mt-4 border rounded p-3 text-sm">
+          <div className="font-semibold mb-1">🏆 Personal Records</div>
+          <ul className="space-y-1">
+            {pr.bestWeight != null && (
+              <li className="flex justify-between">
+                <span>Max Weight</span>
+                <span className="font-medium">{pr.bestWeight} kg</span>
+              </li>
+            )}
+            {pr.best1RM != null && (
+              <li className="flex justify-between">
+                <span>Estimated 1RM</span>
+                <span className="font-medium">{pr.best1RM} kg</span>
+              </li>
+            )}
+            {pr.bestReps != null && (
+              <li className="flex justify-between">
+                <span>Best Reps</span>
+                <span className="font-medium">{pr.bestReps}</span>
+              </li>
+            )}
+            {pr.bestDurationSec != null && (
+              <li className="flex justify-between">
+                <span>Best Duration</span>
+                <span className="font-medium">
+                  {formatDuration(pr.bestDurationSec)}
+                </span>
+              </li>
+            )}
+          </ul>
+          <div className="text-xs text-gray-500 mt-2">
+            Updated {new Date(pr.updatedAt).toLocaleString()}
+          </div>
+        </div>
+      )}
 
       {series.length > 0 && (
         <div className="mt-3 text-sm text-gray-700">
@@ -1007,14 +1108,11 @@ function SettingsTab() {
         if (!ok) return;
       }
 
-      // Optional: pre-import auto-backup
       try {
         const pre = await exportAll();
         const ts = new Date().toISOString().replace(/[:.]/g, "-");
         downloadJSON(`pre-import-backup-${ts}.json`, pre);
-      } catch {
-        // ignore backup errors
-      }
+      } catch {}
 
       await importAll(json, { mode });
       alert("Import complete.");
@@ -1032,8 +1130,8 @@ function SettingsTab() {
       <section className="border rounded p-3">
         <h3 className="font-semibold">Backup & Restore</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Export all local data (exercises, workouts, sets) to a JSON file, or
-          import from a previous backup.
+          Export all local data (exercises, workouts, sets, PRs) to a JSON file,
+          or import from a previous backup.
         </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
@@ -1084,12 +1182,13 @@ function SettingsTab() {
           className="mt-2 min-h-[44px] px-4 rounded border"
           onClick={async () => {
             const ok = window.confirm(
-              "This will delete ALL local data (exercises, workouts, sets). Are you sure?"
+              "This will delete ALL local data (exercises, workouts, sets, PRs). Are you sure?"
             );
             if (!ok) return;
-            await db.transaction("rw", [db.exercises, db.workouts, db.sets], async () => {
+            await db.transaction("rw", [db.exercises, db.workouts, db.sets, db.prs], async () => {
               await db.sets.clear();
               await db.workouts.clear();
+              await db.prs.clear();
               await db.exercises.clear();
             });
             alert("All local data cleared.");
