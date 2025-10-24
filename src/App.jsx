@@ -133,6 +133,11 @@ function ExercisesTab({ useLiveQuery }) {
   const [isTimed, setIsTimed] = useState(false);
   const [error, setError] = useState("");
 
+  // inline editor state
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editTimed, setEditTimed] = useState(false);
+
   async function handleAdd(e) {
     e.preventDefault();
     try {
@@ -147,6 +152,34 @@ function ExercisesTab({ useLiveQuery }) {
     }
   }
 
+  function startEdit(ex) {
+    setEditingId(ex.id);
+    setEditName(ex.name);
+    setEditTimed(!!ex.isTimed);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+    setEditTimed(false);
+  }
+
+  async function saveEdit(ex) {
+    try {
+      // Save name first (always allowed)
+      if (editName.trim() && editName.trim() !== ex.name) {
+        await updateExerciseName(ex.id, editName.trim());
+      }
+      // Then try toggling timed (may be blocked if sets exist)
+      if (editTimed !== !!ex.isTimed) {
+        await updateExerciseTimed(ex.id, editTimed);
+      }
+      cancelEdit();
+    } catch (e) {
+      alert(e.message || "Could not save changes.");
+    }
+  }
+
   async function onDeleteExercise(id, label) {
     const ok = window.confirm(
       `Delete "${label}"?\n\nThis will also delete all sets logged for this exercise.`
@@ -155,33 +188,28 @@ function ExercisesTab({ useLiveQuery }) {
     await deleteExercise(id);
   }
 
-  async function onRenameExercise(ex) {
-    const next = window.prompt("Rename exercise", ex.name);
-    if (next == null) return; // cancel
-    const clean = next.trim();
-    if (!clean || clean === ex.name) return;
-    await updateExerciseName(ex.id, clean);
-  }
-
-  async function onToggleTimed(ex) {
-    const next = !ex.isTimed;
-    try {
-      const ok = window.confirm(
-        `Convert "${ex.name}" to ${next ? "timed" : "reps"} exercise?\n\n` +
-          "Note: This is blocked if the exercise already has logged sets."
-      );
-      if (!ok) return;
-      await updateExerciseTimed(ex.id, next);
-    } catch (e) {
-      alert(e.message || "Could not convert exercise type.");
-    }
-  }
+  // tiny inline SVGs (no deps)
+  const PencilIcon = (props) => (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+  const TrashIcon = (props) => (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
 
   return (
     <div className="overflow-x-hidden">
       <h2 className="font-semibold">Your exercises</h2>
 
-      {/* Stack the form vertically on mobile to avoid horizontal scroll */}
+      {/* Vertical form to avoid horizontal scroll */}
       <form onSubmit={handleAdd} className="mt-3 grid grid-cols-1 gap-2">
         <input
           className="h-10 border rounded px-3 text-base w-full"
@@ -222,11 +250,12 @@ function ExercisesTab({ useLiveQuery }) {
       <ul className="mt-4 space-y-2">
         {(exercises ?? []).map((ex) => (
           <li key={ex.id} className="border rounded p-2">
-            <div className="flex items-center justify-between gap-2">
-              {/* Left: name + badges */}
+            {/* Header row: name/badges (wrap) + icon buttons */}
+            <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
               <div className="min-w-0">
-                <div className="font-medium truncate">{ex.name}</div>
-                <div className="mt-0.5 flex gap-1">
+                {/* Allow wrapping so full name is visible */}
+                <div className="font-medium break-words">{ex.name}</div>
+                <div className="mt-1 flex flex-wrap gap-1">
                   <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                     {ex.type}
                   </span>
@@ -238,33 +267,68 @@ function ExercisesTab({ useLiveQuery }) {
                 </div>
               </div>
 
-              {/* Right: actions */}
-              <div className="flex gap-2 shrink-0 whitespace-nowrap">
+              <div className="flex gap-2 shrink-0">
                 <button
-                  className="min-h-[36px] px-3 border rounded"
-                  onClick={() => onToggleTimed(ex)}
-                  title="Convert between timed and reps (blocked if sets exist)"
+                  className="min-h-[36px] px-2 border rounded flex items-center justify-center"
+                  onClick={() => startEdit(ex)}
+                  aria-label="Edit exercise (name & timed)"
+                  title="Edit"
                 >
-                  {ex.isTimed ? "Make Reps" : "Make Timed"}
+                  <PencilIcon />
                 </button>
                 <button
-                  className="min-h-[36px] px-3 border rounded"
-                  onClick={() => onRenameExercise(ex)}
-                  title="Rename exercise"
-                >
-                  Rename
-                </button>
-                <button
-                  className="min-h-[36px] px-3 border rounded"
+                  className="min-h-[36px] px-2 border rounded flex items-center justify-center"
                   onClick={() => onDeleteExercise(ex.id, ex.name)}
-                  title="Delete exercise and its sets"
+                  aria-label="Delete exercise"
+                  title="Delete"
                 >
-                  Delete
+                  <TrashIcon />
                 </button>
               </div>
             </div>
+
+            {/* Inline editor (only for the row being edited) */}
+            {editingId === ex.id && (
+              <div className="mt-3 border-t pt-3">
+                <div className="grid grid-cols-1 gap-2">
+                  <input
+                    className="h-10 border rounded px-3 text-base w-full"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Exercise name"
+                  />
+                  <label className="h-10 border rounded px-3 text-base w-full flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editTimed}
+                      onChange={(e) => setEditTimed(e.target.checked)}
+                    />
+                    Timed exercise (use duration)
+                  </label>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    className="min-h-[36px] px-4 rounded bg-black text-white"
+                    onClick={() => saveEdit(ex)}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="min-h-[36px] px-4 rounded border"
+                    onClick={cancelEdit}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Note: Switching timed ↔ reps is blocked if this exercise
+                  already has logged sets.
+                </p>
+              </div>
+            )}
           </li>
         ))}
+
         {exercises?.length === 0 && (
           <p className="text-gray-500">No exercises yet — add one above.</p>
         )}
@@ -272,6 +336,7 @@ function ExercisesTab({ useLiveQuery }) {
     </div>
   );
 }
+
 
 /* ---------- Log Tab ---------- */
 function LogTab({ useLiveQuery }) {
