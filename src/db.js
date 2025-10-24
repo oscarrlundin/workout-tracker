@@ -1,148 +1,168 @@
 // src/db.js
 import Dexie from "dexie";
 
-export const db = new Dexie("workoutTracker");
+export const db = new Dexie("workout-tracker");
 db.version(1).stores({
-  exercises: "++id, name, type, createdAt",   // type: 'weighted' | 'bodyweight'
+  exercises: "++id, name, type, createdAt",
   workouts: "++id, dateISO, notes",
-  sets: "++id, workoutId, exerciseId, setIndex, reps, weightKg"
+  sets: "++id, workoutId, exerciseId, setIndex, reps, weightKg",
 });
 
-// ------- Exercise helpers -------
-export async function addExercise({ name, type = "weighted" }) {
-  const trimmed = (name || "").trim();
-  if (!trimmed) throw new Error("Exercise needs a name");
-  return db.exercises.add({ name: trimmed, type, createdAt: new Date().toISOString() });
+/* ---------------- Helpers: Exercises ---------------- */
+
+export async function addExercise({ name, type = "weighted", isTimed = false }) {
+  const clean = String(name || "").trim();
+  if (!clean) throw new Error("Exercise name is required");
+  if (!["weighted", "bodyweight"].includes(type)) {
+    throw new Error("Invalid exercise type");
+  }
+  const now = new Date().toISOString();
+  return db.exercises.add({ name: clean, type, isTimed: !!isTimed, createdAt: now });
 }
 
-export const getExercises = () => db.exercises.orderBy("createdAt").toArray();
+export async function getExercises() {
+  return db.exercises.orderBy("createdAt").toArray();
+}
 
-export async function deleteExercise(exerciseId) {
-  // Delete the exercise and all of its sets in a single transaction
-  await db.transaction('rw', db.sets, db.exercises, async () => {
-    await db.sets.where('exerciseId').equals(exerciseId).delete();
-    await db.exercises.delete(exerciseId);
+export async function updateExerciseName(id, name) {
+  const clean = String(name || "").trim();
+  if (!clean) throw new Error("Name is required");
+  return db.exercises.update(id, { name: clean });
+}
+
+/** Block converting timed <-> reps if sets already exist for the exercise */
+export async function updateExerciseTimed(id, isTimed) {
+  const count = await db.sets.where("exerciseId").equals(id).count();
+  if (count > 0) {
+    throw new Error(
+      "Cannot convert timed/reps because this exercise already has logged sets. (Delete sets first or create a new exercise.)"
+    );
+  }
+  return db.exercises.update(id, { isTimed: !!isTimed });
+}
+
+export async function deleteExercise(id) {
+  return db.transaction("rw", db.sets, db.exercises, async () => {
+    await db.sets.where("exerciseId").equals(id).delete();
+    await db.exercises.delete(id);
   });
 }
 
-// (optional for later)
-// export function updateExerciseName(id, name) {
-//   const trimmed = (name || "").trim();
-//   if (!trimmed) return Promise.resolve();
-//   return db.exercises.update(id, { name: trimmed });
-// }
+/* ---------------- Helpers: Workouts ---------------- */
 
-// ------- Workout helpers -------
-export async function createWorkout(dateISO) {
-  return db.workouts.add({ dateISO, notes: "" });
+export async function createWorkout(dateISO, notes = "") {
+  const cleanDate = String(dateISO || "").slice(0, 10);
+  if (!cleanDate) throw new Error("dateISO required");
+  const existing = await db.workouts.where("dateISO").equals(cleanDate).first();
+  if (existing) return existing.id;
+  return db.workouts.add({ dateISO: cleanDate, notes });
 }
 
-export const getWorkoutsByDate = (dateISO) =>
-  db.workouts.where("dateISO").equals(dateISO).toArray();
-
-// ------- Sets helpers -------
-export async function addSet({ workoutId, exerciseId, setIndex, reps, weightKg }) {
-  return db.sets.add({ workoutId, exerciseId, setIndex, reps, weightKg: weightKg ?? null });
+export async function getWorkoutsByDate(dateISO) {
+  const d = String(dateISO || "").slice(0, 10);
+  return db.workouts.where("dateISO").equals(d).toArray();
 }
 
-export const getSetsForWorkout = (workoutId) =>
-  db.sets.where("workoutId").equals(workoutId).sortBy("setIndex");
+/* ---------------- Helpers: Sets ---------------- */
 
-export const getSetsForExercise = (exerciseId) =>
-  db.sets.where("exerciseId").equals(exerciseId).toArray();
-
-export function updateSet(id, fields) {
-  return db.sets.update(id, fields);
+export async function addSet({
+  workoutId,
+  exerciseId,
+  setIndex,
+  reps = null,          // integer, for non-timed
+  weightKg = null,      // number | null
+  durationSec = null,   // integer seconds, for timed
+}) {
+  if (!workoutId || !exerciseId || !setIndex) throw new Error("Missing fields");
+  // We allow either reps OR durationSec (or both null while drafting), but saving should pass one of them.
+  return db.sets.add({
+    workoutId,
+    exerciseId,
+    setIndex,
+    reps: typeof reps === "number" ? reps : null,
+    weightKg: typeof weightKg === "number" ? weightKg : null,
+    durationSec: typeof durationSec === "number" ? durationSec : null,
+  });
 }
 
-export function deleteSet(id) {
+export async function updateSet(id, patch) {
+  const clean = {};
+  if ("reps" in patch) clean.reps = patch.reps ?? null;
+  if ("weightKg" in patch)
+    clean.weightKg =
+      typeof patch.weightKg === "number" ? patch.weightKg : null;
+  if ("durationSec" in patch)
+    clean.durationSec =
+      typeof patch.durationSec === "number" ? patch.durationSec : null;
+  if ("setIndex" in patch) clean.setIndex = patch.setIndex;
+  return db.sets.update(id, clean);
+}
+
+export async function deleteSet(id) {
   return db.sets.delete(id);
 }
 
-// ------- Metrics -------
-export function epley1RM(weightKg, reps) {
-  if (!weightKg || !reps) return 0;
-  return Math.round(weightKg * (1 + reps / 30));
+export async function getSetsForWorkout(workoutId) {
+  return db.sets.where("workoutId").equals(workoutId).sortBy("setIndex");
 }
-// --- JSON EXPORT / IMPORT / RENAME HELPERS ---
 
-/**
- * Export all app data to a versioned JSON payload.
- * Preserves row IDs so relationships (exerciseId/workoutId) stay intact.
- */
+export async function getSetsForExercise(exerciseId) {
+  return db.sets.where("exerciseId").equals(exerciseId).toArray();
+}
+
+/* ---------------- Utils ---------------- */
+
+export function epley1RM(weight, reps) {
+  const w = Number(weight || 0);
+  const r = Number(reps || 0);
+  if (!w || !r) return 0;
+  return Math.round(w * (1 + r / 30));
+}
+
+/* ---------------- Export / Import ---------------- */
+
 export async function exportAll() {
-  const schemaVersion = db.verno || 1;
-  const exportedAt = new Date().toISOString();
-
-  const [exercises, workouts, sets] = await db.transaction('r', db.exercises, db.workouts, db.sets, async () => {
-    const ex = await db.exercises.toArray();
-    const wo = await db.workouts.toArray();
-    const se = await db.sets.toArray();
-    return [ex, wo, se];
+  const data = await db.transaction("r", db.exercises, db.workouts, db.sets, async () => {
+    const [exercises, workouts, sets] = await Promise.all([
+      db.exercises.toArray(),
+      db.workouts.toArray(),
+      db.sets.toArray(),
+    ]);
+    return { exercises, workouts, sets };
   });
-
   return {
-    schemaVersion,
-    exportedAt,
-    tables: {
-      exercises,
-      workouts,
-      sets,
-    },
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    tables: data,
   };
 }
 
-/**
- * Import from a previously exported JSON.
- * mode: 'replace' | 'merge' (default 'replace')
- * - replace: clears existing tables then bulkPut incoming rows (keeps incoming IDs)
- * - merge: upserts rows by ID; ignores missing relations check for speed (assumes exportAll format)
- */
-export async function importAll(payload, { mode = 'replace' } = {}) {
-  if (!payload || typeof payload !== 'object') throw new Error('Invalid file: not an object');
-  if (!payload.tables || typeof payload.tables !== 'object') throw new Error('Invalid file: missing tables');
+export async function importAll(payload, { mode = "replace" } = {}) {
+  if (!payload || typeof payload !== "object" || !payload.tables) {
+    throw new Error("Invalid payload");
+  }
   const { exercises = [], workouts = [], sets = [] } = payload.tables;
 
-  // Basic shape checks
-  if (!Array.isArray(exercises) || !Array.isArray(workouts) || !Array.isArray(sets)) {
-    throw new Error('Invalid file: tables must be arrays');
-  }
-
-  if (mode === 'replace') {
-    // Full replace in a single transaction
-    await db.transaction('rw', db.exercises, db.workouts, db.sets, async () => {
-      await Promise.all([
-        db.sets.clear(),
-        db.workouts.clear(),
-        db.exercises.clear(),
-      ]);
-      // Preserve incoming IDs
-      await db.exercises.bulkPut(exercises);
-      await db.workouts.bulkPut(workouts);
-      await db.sets.bulkPut(sets);
-    });
-    return { mode, replaced: true, counts: { exercises: exercises.length, workouts: workouts.length, sets: sets.length } };
-  }
-
-  // Merge: upsert by ID (keeps existing rows if ID collision, prefers incoming data)
-  if (mode === 'merge') {
-    await db.transaction('rw', db.exercises, db.workouts, db.sets, async () => {
+  if (mode === "replace") {
+    await db.transaction("rw", db.exercises, db.workouts, db.sets, async () => {
+      await db.sets.clear();
+      await db.workouts.clear();
+      await db.exercises.clear();
       if (exercises.length) await db.exercises.bulkPut(exercises);
       if (workouts.length) await db.workouts.bulkPut(workouts);
       if (sets.length) await db.sets.bulkPut(sets);
     });
-    return { mode, merged: true, counts: { exercises: exercises.length, workouts: workouts.length, sets: sets.length } };
+    return;
   }
 
-  throw new Error(`Unknown import mode: ${mode}`);
-}
+  if (mode === "merge") {
+    await db.transaction("rw", db.exercises, db.workouts, db.sets, async () => {
+      if (exercises.length) await db.exercises.bulkPut(exercises);
+      if (workouts.length) await db.workouts.bulkPut(workouts);
+      if (sets.length) await db.sets.bulkPut(sets);
+    });
+    return;
+  }
 
-/**
- * Rename an exercise by ID
- */
-export async function updateExerciseName(exerciseId, newName) {
-  const name = String(newName || '').trim();
-  if (!name) throw new Error('Exercise name cannot be empty');
-  await db.exercises.update(exerciseId, { name });
-  return true;
+  throw new Error("Unknown import mode");
 }

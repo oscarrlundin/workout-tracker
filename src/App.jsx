@@ -16,6 +16,7 @@ import {
   exportAll,
   importAll,
   updateExerciseName,
+  updateExerciseTimed,
 } from "./db";
 import { liveQuery } from "dexie";
 import {
@@ -66,11 +67,17 @@ function downloadJSON(filename, data) {
   URL.revokeObjectURL(url);
 }
 
+function formatDuration(sec) {
+  if (!Number.isFinite(sec) || sec <= 0) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 /* ---------- App ---------- */
 export default function App() {
   const [tab, setTab] = useState("Log");
 
-  // Mobile gate (optional)
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   if (!isMobile) {
     return (
@@ -123,15 +130,17 @@ function ExercisesTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [name, setName] = useState("");
   const [type, setType] = useState("weighted");
+  const [isTimed, setIsTimed] = useState(false);
   const [error, setError] = useState("");
 
   async function handleAdd(e) {
     e.preventDefault();
     try {
       if (!name.trim()) return;
-      await addExercise({ name: name.trim(), type });
+      await addExercise({ name: name.trim(), type, isTimed });
       setName("");
       setType("weighted");
+      setIsTimed(false);
       setError("");
     } catch (err) {
       setError(err.message || "Failed to add exercise");
@@ -154,6 +163,20 @@ function ExercisesTab({ useLiveQuery }) {
     await updateExerciseName(ex.id, clean);
   }
 
+  async function onToggleTimed(ex) {
+    const next = !ex.isTimed;
+    try {
+      const ok = window.confirm(
+        `Convert "${ex.name}" to ${next ? "timed" : "reps"} exercise?\n\n` +
+          "Note: This is blocked if the exercise already has logged sets."
+      );
+      if (!ok) return;
+      await updateExerciseTimed(ex.id, next);
+    } catch (e) {
+      alert(e.message || "Could not convert exercise type.");
+    }
+  }
+
   return (
     <div className="overflow-x-hidden">
       <h2 className="font-semibold">Your exercises</h2>
@@ -162,19 +185,30 @@ function ExercisesTab({ useLiveQuery }) {
       <form onSubmit={handleAdd} className="mt-3 grid grid-cols-1 gap-2">
         <input
           className="h-10 border rounded px-3 text-base w-full"
-          placeholder="e.g., Bench Press"
+          placeholder="e.g., Plank or Dead Hang"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
 
-        <select
-          className="h-10 border rounded px-3 text-base w-full"
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-        >
-          <option value="weighted">Weighted</option>
-          <option value="bodyweight">Bodyweight</option>
-        </select>
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            className="h-10 border rounded px-3 text-base w-full"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+            <option value="weighted">Weighted</option>
+            <option value="bodyweight">Bodyweight</option>
+          </select>
+
+          <label className="h-10 border rounded px-3 text-base w-full flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isTimed}
+              onChange={(e) => setIsTimed(e.target.checked)}
+            />
+            Timed exercise (use duration)
+          </label>
+        </div>
 
         <button
           className="min-h-[44px] px-4 rounded bg-black text-white w-full"
@@ -189,16 +223,30 @@ function ExercisesTab({ useLiveQuery }) {
         {(exercises ?? []).map((ex) => (
           <li key={ex.id} className="border rounded p-2">
             <div className="flex items-center justify-between gap-2">
-              {/* Left: name + tiny badge on its own line, truncates nicely */}
+              {/* Left: name + badges */}
               <div className="min-w-0">
                 <div className="font-medium truncate">{ex.name}</div>
-                <span className="mt-0.5 inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                  {ex.type}
-                </span>
+                <div className="mt-0.5 flex gap-1">
+                  <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                    {ex.type}
+                  </span>
+                  {ex.isTimed && (
+                    <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      timed
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Right: buttons never shrink below content and won’t overlap */}
+              {/* Right: actions */}
               <div className="flex gap-2 shrink-0 whitespace-nowrap">
+                <button
+                  className="min-h-[36px] px-3 border rounded"
+                  onClick={() => onToggleTimed(ex)}
+                  title="Convert between timed and reps (blocked if sets exist)"
+                >
+                  {ex.isTimed ? "Make Reps" : "Make Timed"}
+                </button>
                 <button
                   className="min-h-[36px] px-3 border rounded"
                   onClick={() => onRenameExercise(ex)}
@@ -225,7 +273,6 @@ function ExercisesTab({ useLiveQuery }) {
   );
 }
 
-
 /* ---------- Log Tab ---------- */
 function LogTab({ useLiveQuery }) {
   const [dateISO, setDateISO] = useState(todayISO());
@@ -233,17 +280,24 @@ function LogTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [selectedExerciseId, setSelectedExerciseId] = useState("");
 
-  // Keep a string for the input field to allow temporary empty value,
-  // and a numeric state we actually use for logic.
+  // Sets count: UI-friendly string + numeric state
   const [numSetsInput, setNumSetsInput] = useState("3");
   const [numSets, setNumSets] = useState(3);
-  const [sets, setSets] = useState([{ reps: "", weight: "" }]);
+
+  // For each set row we store either reps/weight OR duration fields while editing
+  const [sets, setSets] = useState([{ reps: "", weight: "", min: "", sec: "" }]);
 
   const workoutsToday = useLiveQuery(() => getWorkoutsByDate(dateISO), [dateISO]);
   const setsForWorkout = useLiveQuery(
     () => (workoutId ? getSetsForWorkout(workoutId) : Promise.resolve([])),
     [workoutId]
   );
+
+  const selectedExercise = (exercises ?? []).find(
+    (e) => String(e.id) === String(selectedExerciseId)
+  );
+  const isTimed = !!selectedExercise?.isTimed;
+  const isWeighted = selectedExercise?.type === "weighted";
 
   useEffect(() => {
     if (workoutsToday && workoutsToday[0]) setWorkoutId(workoutsToday[0].id);
@@ -255,16 +309,18 @@ function LogTab({ useLiveQuery }) {
     const count = Math.max(1, Math.min(nextCount, 20)); // 1..20
     setNumSets(count);
     setSets((prev) => {
-      const next = Array.from({ length: count }, (_, i) => prev[i] ?? { reps: "", weight: "" });
+      const next = Array.from({ length: count }, (_, i) => {
+        return (
+          prev[i] ?? { reps: "", weight: "", min: "", sec: "" }
+        );
+      });
       return next;
     });
   }
 
   function onNumSetsChangeTyping(value) {
-    // Allow only digits, max 2 chars (so user can type freely)
     if (!/^\d{0,2}$/.test(value)) return;
     setNumSetsInput(value);
-    // Do not coerce here — user may be mid-edit (e.g., empty string)
   }
 
   function onNumSetsBlur() {
@@ -292,21 +348,41 @@ function LogTab({ useLiveQuery }) {
   async function addExerciseSets() {
     if (!selectedExerciseId) return;
     const wid = await ensureWorkout();
+
     for (let i = 0; i < numSets; i++) {
-      const { reps, weight } = sets[i] || {};
-      const repsNum = Number(reps);
-      const weightNum = weight === "" ? null : Number(weight);
-      if (!Number.isFinite(repsNum) || repsNum <= 0) continue;
-      await addSet({
-        workoutId: wid,
-        exerciseId: Number(selectedExerciseId),
-        setIndex: i + 1,
-        reps: repsNum,
-        weightKg: weightNum,
-      });
+      const row = sets[i] || {};
+      if (isTimed) {
+        const m = Number(row.min || 0);
+        const s = Number(row.sec || 0);
+        const total = Math.round((m >= 0 ? m : 0) * 60 + (s >= 0 ? s : 0));
+        if (!Number.isFinite(total) || total <= 0) continue;
+        const weightNum =
+          isWeighted && row.weight !== "" ? Number(row.weight) : null;
+        await addSet({
+          workoutId: wid,
+          exerciseId: Number(selectedExerciseId),
+          setIndex: i + 1,
+          durationSec: total,
+          weightKg: Number.isFinite(weightNum) ? weightNum : null,
+          reps: null,
+        });
+      } else {
+        const repsNum = Number(row.reps);
+        if (!Number.isFinite(repsNum) || repsNum <= 0) continue;
+        const weightNum =
+          row.weight === "" ? null : Number(row.weight);
+        await addSet({
+          workoutId: wid,
+          exerciseId: Number(selectedExerciseId),
+          setIndex: i + 1,
+          reps: repsNum,
+          weightKg: Number.isFinite(weightNum) ? weightNum : null,
+          durationSec: null,
+        });
+      }
     }
     // reset inputs to a single empty row (keep count as-is)
-    setSets([{ reps: "", weight: "" }]);
+    setSets([{ reps: "", weight: "", min: "", sec: "" }]);
   }
 
   async function onDeleteSet(id) {
@@ -383,35 +459,86 @@ function LogTab({ useLiveQuery }) {
           </div>
         </div>
 
+        {/* Dynamic set rows */}
         <div className="mt-3 space-y-2">
           {Array.from({ length: numSets }).map((_, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="w-12 text-sm text-gray-600">Set {i + 1}</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="reps"
-                className="w-24 h-10 border rounded px-3 text-base"
-                value={sets[i]?.reps ?? ""}
-                onChange={(e) => {
-                  const next = [...sets];
-                  next[i] = { ...(next[i] || {}), reps: e.target.value };
-                  setSets(next);
-                }}
-              />
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="weight (kg)"
-                className="w-32 h-10 border rounded px-3 text-base"
-                value={sets[i]?.weight ?? ""}
-                onChange={(e) => {
-                  const next = [...sets];
-                  next[i] = { ...(next[i] || {}), weight: e.target.value };
-                  setSets(next);
-                }}
-              />
+
+              {/* Timed vs Reps inputs */}
+              {isTimed ? (
+                <>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="min"
+                    className="w-20 h-10 border rounded px-3 text-base"
+                    value={sets[i]?.min ?? ""}
+                    onChange={(e) => {
+                      const next = [...sets];
+                      next[i] = { ...(next[i] || {}), min: e.target.value };
+                      setSets(next);
+                    }}
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="sec"
+                    className="w-20 h-10 border rounded px-3 text-base"
+                    value={sets[i]?.sec ?? ""}
+                    onChange={(e) => {
+                      const next = [...sets];
+                      // clamp 0..59 visually later during save
+                      next[i] = { ...(next[i] || {}), sec: e.target.value };
+                      setSets(next);
+                    }}
+                  />
+                  {isWeighted && (
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="weight (kg)"
+                      className="w-32 h-10 border rounded px-3 text-base"
+                      value={sets[i]?.weight ?? ""}
+                      onChange={(e) => {
+                        const next = [...sets];
+                        next[i] = { ...(next[i] || {}), weight: e.target.value };
+                        setSets(next);
+                      }}
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="reps"
+                    className="w-24 h-10 border rounded px-3 text-base"
+                    value={sets[i]?.reps ?? ""}
+                    onChange={(e) => {
+                      const next = [...sets];
+                      next[i] = { ...(next[i] || {}), reps: e.target.value };
+                      setSets(next);
+                    }}
+                  />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="weight (kg)"
+                    className="w-32 h-10 border rounded px-3 text-base"
+                    value={sets[i]?.weight ?? ""}
+                    onChange={(e) => {
+                      const next = [...sets];
+                      next[i] = { ...(next[i] || {}), weight: e.target.value };
+                      setSets(next);
+                    }}
+                  />
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -419,6 +546,7 @@ function LogTab({ useLiveQuery }) {
         <button
           className="mt-3 min-h-[44px] px-4 rounded bg-black text-white"
           onClick={addExerciseSets}
+          disabled={!selectedExercise}
         >
           Add to Workout
         </button>
@@ -441,13 +569,184 @@ function LogTab({ useLiveQuery }) {
   );
 }
 
+function RowForSet({ s, onDelete }) {
+  const [exercise, setExercise] = useState(null);
+  const [editing, setEditing] = useState(false);
+
+  // Local edit state
+  const [reps, setReps] = useState(s.reps ?? "");
+  const [weight, setWeight] = useState(
+    typeof s.weightKg === "number" ? String(s.weightKg) : ""
+  );
+  const [min, setMin] = useState(
+    Number.isFinite(s.durationSec) ? String(Math.floor(s.durationSec / 60)) : ""
+  );
+  const [sec, setSec] = useState(
+    Number.isFinite(s.durationSec) ? String(s.durationSec % 60) : ""
+  );
+
+  useEffect(() => {
+    db.exercises.get(s.exerciseId).then(setExercise);
+  }, [s.exerciseId]);
+
+  const isTimed = !!exercise?.isTimed;
+  const isWeighted = exercise?.type === "weighted";
+
+  async function onSave() {
+    if (isTimed) {
+      const m = Number(min || 0);
+      let sc = Number(sec || 0);
+      if (!Number.isFinite(m) && !Number.isFinite(sc)) return;
+      // clamp seconds 0..59
+      sc = Math.max(0, Math.min(59, sc));
+      const total = Math.round((m >= 0 ? m : 0) * 60 + (sc >= 0 ? sc : 0));
+      if (!total) return;
+      const weightNum = isWeighted && weight !== "" ? Number(weight) : null;
+      await updateSet(s.id, {
+        durationSec: total,
+        weightKg: Number.isFinite(weightNum) ? weightNum : null,
+        reps: null,
+      });
+    } else {
+      const repsNum = Number(reps);
+      if (!Number.isFinite(repsNum) || repsNum <= 0) return;
+      const weightNum = weight === "" ? null : Number(weight);
+      await updateSet(s.id, {
+        reps: repsNum,
+        weightKg: Number.isFinite(weightNum) ? weightNum : null,
+        durationSec: null,
+      });
+    }
+    setEditing(false);
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="font-medium truncate">{exercise?.name ?? "…"}</div>
+
+        {!editing ? (
+          <div className="text-gray-600 text-sm">
+            Set {s.setIndex}:{" "}
+            {isTimed
+              ? `${formatDuration(s.durationSec ?? 0)}`
+              : `${s.reps} reps`}
+            {typeof s.weightKg === "number" ? ` @ ${s.weightKg} kg` : ""}
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2 mt-1">
+            {isTimed ? (
+              <>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-20 h-10 border rounded px-3 text-base"
+                  value={min}
+                  onChange={(e) => setMin(e.target.value)}
+                  placeholder="min"
+                />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-20 h-10 border rounded px-3 text-base"
+                  value={sec}
+                  onChange={(e) => setSec(e.target.value)}
+                  placeholder="sec"
+                />
+                {isWeighted && (
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="w-28 h-10 border rounded px-3 text-base"
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    placeholder="weight (kg)"
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-24 h-10 border rounded px-3 text-base"
+                  value={reps}
+                  onChange={(e) => setReps(e.target.value)}
+                  placeholder="reps"
+                />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="w-28 h-10 border rounded px-3 text-base"
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value)}
+                  placeholder="weight (kg)"
+                />
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 gap-2">
+        {!editing ? (
+          <>
+            <button
+              className="min-h-[36px] px-3 border rounded"
+              onClick={() => setEditing(true)}
+            >
+              Edit
+            </button>
+            <button
+              className="min-h-[36px] px-3 border rounded"
+              onClick={() => onDelete(s.id)}
+            >
+              Delete
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="min-h-[36px] px-3 border rounded bg-black text-white"
+              onClick={onSave}
+            >
+              Save
+            </button>
+            <button
+              className="min-h-[36px] px-3 border rounded"
+              onClick={() => {
+                setEditing(false);
+                setReps(s.reps ?? "");
+                setWeight(typeof s.weightKg === "number" ? String(s.weightKg) : "");
+                setMin(
+                  Number.isFinite(s.durationSec)
+                    ? String(Math.floor(s.durationSec / 60))
+                    : ""
+                );
+                setSec(
+                  Number.isFinite(s.durationSec) ? String(s.durationSec % 60) : ""
+                );
+              }}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ---------- Progress Tab ---------- */
 function ProgressTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [exerciseId, setExerciseId] = useState("");
-  const [metric, setMetric] = useState("maxWeight"); // 'maxWeight' | 'bestReps' | 'est1RM'
+  const [metric, setMetric] = useState("maxWeight"); // default for non-timed
   const [points, setPoints] = useState([]);
+  const selectedExercise = (exercises ?? []).find(
+    (e) => String(e.id) === String(exerciseId)
+  );
+  const isTimed = !!selectedExercise?.isTimed;
 
   useEffect(() => {
     (async () => {
@@ -457,7 +756,6 @@ function ProgressTab({ useLiveQuery }) {
       }
       const all = await getSetsForExercise(Number(exerciseId));
 
-      // Map workoutId -> workout (to get date)
       const workoutsById = {};
       await db.workouts
         .bulkGet([...new Set(all.map((s) => s.workoutId))])
@@ -467,7 +765,6 @@ function ProgressTab({ useLiveQuery }) {
           });
         });
 
-      // Group sets by workout date
       const byDate = {};
       for (const s of all) {
         const dateISO = workoutsById[s.workoutId]?.dateISO;
@@ -477,28 +774,43 @@ function ProgressTab({ useLiveQuery }) {
 
       const rows = Object.entries(byDate)
         .map(([dateISO, sets]) => {
-          const maxWeight = Math.max(...sets.map((s) => s.weightKg ?? 0));
-          const bestReps = Math.max(...sets.map((s) => s.reps ?? 0));
-          const best1RM = Math.max(
-            ...sets.map((s) => epley1RM(s.weightKg ?? 0, s.reps ?? 0))
-          );
-          return { dateISO, maxWeight, bestReps, est1RM: best1RM };
+          if (isTimed) {
+            const bestDuration = Math.max(...sets.map((s) => s.durationSec ?? 0));
+            return { dateISO, bestDuration };
+          } else {
+            const maxWeight = Math.max(...sets.map((s) => s.weightKg ?? 0));
+            const bestReps = Math.max(...sets.map((s) => s.reps ?? 0));
+            const best1RM = Math.max(
+              ...sets.map((s) => epley1RM(s.weightKg ?? 0, s.reps ?? 0))
+            );
+            return { dateISO, maxWeight, bestReps, est1RM: best1RM };
+          }
         })
         .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
 
       setPoints(rows);
     })();
-  }, [exerciseId]);
+  }, [exerciseId, isTimed]);
+
+  // Adjust metric automatically when switching exercise type
+  useEffect(() => {
+    if (isTimed) setMetric("bestDuration");
+    else if (metric === "bestDuration") setMetric("maxWeight");
+  }, [isTimed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const series = useMemo(() => {
+    if (isTimed) {
+      return points.map((p) => ({ x: p.dateISO, y: p.bestDuration ?? 0 }));
+    }
     if (metric === "maxWeight")
       return points.map((p) => ({ x: p.dateISO, y: p.maxWeight }));
     if (metric === "bestReps")
       return points.map((p) => ({ x: p.dateISO, y: p.bestReps }));
     return points.map((p) => ({ x: p.dateISO, y: p.est1RM }));
-  }, [points, metric]);
+  }, [points, metric, isTimed]);
 
-  const unit = metric === "bestReps" ? "reps" : "kg";
+  const unit =
+    isTimed ? "sec" : metric === "bestReps" ? "reps" : "kg";
 
   return (
     <div>
@@ -516,15 +828,25 @@ function ProgressTab({ useLiveQuery }) {
           ))}
         </select>
 
-        <select
-          className="h-10 border rounded px-3 text-base"
-          value={metric}
-          onChange={(e) => setMetric(e.target.value)}
-        >
-          <option value="maxWeight">Max Weight</option>
-          <option value="est1RM">Estimated 1RM</option>
-          <option value="bestReps">Best Reps</option>
-        </select>
+        {isTimed ? (
+          <select
+            className="h-10 border rounded px-3 text-base"
+            value="bestDuration"
+            disabled
+          >
+            <option value="bestDuration">Best Duration</option>
+          </select>
+        ) : (
+          <select
+            className="h-10 border rounded px-3 text-base"
+            value={metric}
+            onChange={(e) => setMetric(e.target.value)}
+          >
+            <option value="maxWeight">Max Weight</option>
+            <option value="est1RM">Estimated 1RM</option>
+            <option value="bestReps">Best Reps</option>
+          </select>
+        )}
       </div>
 
       <div className="mt-4 h-64 border rounded p-2">
@@ -537,7 +859,11 @@ function ProgressTab({ useLiveQuery }) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="x" />
               <YAxis />
-              <Tooltip />
+              <Tooltip
+                formatter={(value) =>
+                  isTimed ? [formatDuration(value), "Best"] : [value, "Value"]
+                }
+              />
               <Line type="monotone" dataKey="y" dot={{ r: 3 }} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
@@ -550,8 +876,17 @@ function ProgressTab({ useLiveQuery }) {
 
       {series.length > 0 && (
         <div className="mt-3 text-sm text-gray-700">
-          <strong>Latest:</strong> {series[series.length - 1].y} {unit} &nbsp;|&nbsp;
-          <strong>Best:</strong> {Math.max(...series.map((s) => s.y))} {unit}
+          <strong>Latest:</strong>{" "}
+          {isTimed
+            ? formatDuration(series[series.length - 1].y)
+            : series[series.length - 1].y}{" "}
+          {isTimed ? "" : unit}
+          &nbsp;|&nbsp;
+          <strong>Best:</strong>{" "}
+          {isTimed
+            ? formatDuration(Math.max(...series.map((s) => s.y)))
+            : Math.max(...series.map((s) => s.y))}{" "}
+          {isTimed ? "" : unit}
         </div>
       )}
     </div>
@@ -618,7 +953,6 @@ function SettingsTab() {
 
       await importAll(json, { mode });
       alert("Import complete.");
-      // Clear file input
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (e2) {
       console.error(e2);
