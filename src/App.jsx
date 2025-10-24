@@ -222,6 +222,10 @@ function LogTab({ useLiveQuery }) {
   const [workoutId, setWorkoutId] = useState(null);
   const exercises = useLiveQuery(getExercises, []);
   const [selectedExerciseId, setSelectedExerciseId] = useState("");
+
+  // Keep a string for the input field to allow temporary empty value,
+  // and a numeric state we actually use for logic.
+  const [numSetsInput, setNumSetsInput] = useState("3");
   const [numSets, setNumSets] = useState(3);
   const [sets, setSets] = useState([{ reps: "", weight: "" }]);
 
@@ -236,12 +240,36 @@ function LogTab({ useLiveQuery }) {
     else setWorkoutId(null);
   }, [workoutsToday]);
 
-  function handleNumSetsChange(n) {
-    const safe = Number.isFinite(n) && n > 0 ? Math.min(n, 20) : 1;
-    setNumSets(safe);
-    setSets(
-      Array.from({ length: safe }, (_, i) => sets[i] ?? { reps: "", weight: "" })
-    );
+  // Keep sets array in sync with count
+  function syncSetArray(nextCount) {
+    const count = Math.max(1, Math.min(nextCount, 20)); // 1..20
+    setNumSets(count);
+    setSets((prev) => {
+      const next = Array.from({ length: count }, (_, i) => prev[i] ?? { reps: "", weight: "" });
+      return next;
+    });
+  }
+
+  function onNumSetsChangeTyping(value) {
+    // Allow only digits, max 2 chars (so user can type freely)
+    if (!/^\d{0,2}$/.test(value)) return;
+    setNumSetsInput(value);
+    // Do not coerce here — user may be mid-edit (e.g., empty string)
+  }
+
+  function onNumSetsBlur() {
+    const parsed = parseInt(numSetsInput, 10);
+    const safe = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
+    setNumSetsInput(String(safe));
+    syncSetArray(safe);
+  }
+
+  function bumpSets(delta) {
+    const parsed = parseInt(numSetsInput || "0", 10);
+    const base = Number.isFinite(parsed) ? parsed : 1;
+    const next = Math.max(1, Math.min(base + delta, 20));
+    setNumSetsInput(String(next));
+    syncSetArray(next);
   }
 
   async function ensureWorkout() {
@@ -258,7 +286,7 @@ function LogTab({ useLiveQuery }) {
       const { reps, weight } = sets[i] || {};
       const repsNum = Number(reps);
       const weightNum = weight === "" ? null : Number(weight);
-      if (!repsNum || repsNum < 0) continue;
+      if (!Number.isFinite(repsNum) || repsNum <= 0) continue;
       await addSet({
         workoutId: wid,
         exerciseId: Number(selectedExerciseId),
@@ -267,7 +295,7 @@ function LogTab({ useLiveQuery }) {
         weightKg: weightNum,
       });
     }
-    // reset inputs
+    // reset inputs to a single empty row (keep count as-is)
     setSets([{ reps: "", weight: "" }]);
   }
 
@@ -299,7 +327,7 @@ function LogTab({ useLiveQuery }) {
 
       <div className="mt-4 border rounded p-3">
         <h3 className="font-semibold">Add sets</h3>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2 items-center">
           <select
             className="h-10 border rounded px-3 text-base"
             value={selectedExerciseId}
@@ -313,15 +341,36 @@ function LogTab({ useLiveQuery }) {
             ))}
           </select>
 
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="w-28 h-10 border rounded px-3 text-base"
-            value={numSets}
-            onChange={(e) => handleNumSetsChange(Number(e.target.value))}
-          />
-          <span className="text-sm text-gray-600 self-center">sets</span>
+          {/* Number of sets input with +/- and safe handling */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="h-10 w-10 border rounded"
+              onClick={() => bumpSets(-1)}
+              aria-label="Decrease number of sets"
+            >
+              –
+            </button>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="w-20 h-10 border rounded px-3 text-base text-center"
+              value={numSetsInput}
+              onChange={(e) => onNumSetsChangeTyping(e.target.value)}
+              onBlur={onNumSetsBlur}
+              placeholder="sets"
+            />
+            <button
+              type="button"
+              className="h-10 w-10 border rounded"
+              onClick={() => bumpSets(1)}
+              aria-label="Increase number of sets"
+            >
+              +
+            </button>
+            <span className="text-sm text-gray-600">sets</span>
+          </div>
         </div>
 
         <div className="mt-3 space-y-2">
@@ -382,100 +431,6 @@ function LogTab({ useLiveQuery }) {
   );
 }
 
-function RowForSet({ s, onDelete }) {
-  const [exercise, setExercise] = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [reps, setReps] = useState(s.reps);
-  const [weight, setWeight] = useState(
-    typeof s.weightKg === "number" ? String(s.weightKg) : ""
-  );
-
-  useEffect(() => {
-    db.exercises.get(s.exerciseId).then(setExercise);
-  }, [s.exerciseId]);
-
-  async function onSave() {
-    const repsNum = Number(reps);
-    const weightNum = weight === "" ? null : Number(weight);
-    if (!Number.isFinite(repsNum) || repsNum <= 0) return;
-    await updateSet(s.id, { reps: repsNum, weightKg: weightNum });
-    setEditing(false);
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="font-medium truncate">{exercise?.name ?? "…"}</div>
-
-        {!editing ? (
-          <div className="text-gray-600 text-sm">
-            Set {s.setIndex}: {s.reps} reps
-            {typeof s.weightKg === "number" ? ` @ ${s.weightKg} kg` : ""}
-          </div>
-        ) : (
-          <div className="flex gap-2 mt-1">
-            <input
-              type="text"
-              inputMode="numeric"
-              className="w-24 h-10 border rounded px-3 text-base"
-              value={reps}
-              onChange={(e) => setReps(e.target.value)}
-              placeholder="reps"
-            />
-            <input
-              type="text"
-              inputMode="decimal"
-              className="w-28 h-10 border rounded px-3 text-base"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              placeholder="weight (kg)"
-            />
-          </div>
-        )}
-      </div>
-
-      <div className="flex shrink-0 gap-2">
-        {!editing ? (
-          <>
-            <button
-              className="min-h-[36px] px-3 border rounded"
-              onClick={() => setEditing(true)}
-            >
-              Edit
-            </button>
-            <button
-              className="min-h-[36px] px-3 border rounded"
-              onClick={() => onDelete(s.id)}
-            >
-              Delete
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              className="min-h-[36px] px-3 border rounded bg-black text-white"
-              onClick={onSave}
-            >
-              Save
-            </button>
-            <button
-              className="min-h-[36px] px-3 border rounded"
-              onClick={() => {
-                setEditing(false);
-                setReps(s.reps);
-                setWeight(
-                  typeof s.weightKg === "number" ? String(s.weightKg) : ""
-                );
-              }}
-            >
-              Cancel
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /* ---------- Progress Tab ---------- */
 function ProgressTab({ useLiveQuery }) {
