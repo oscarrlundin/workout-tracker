@@ -155,25 +155,29 @@ function ExercisesTab({ useLiveQuery }) {
   }
 
   return (
-    <div>
+    <div className="overflow-x-hidden">
       <h2 className="font-semibold">Your exercises</h2>
-      <form onSubmit={handleAdd} className="mt-3 flex gap-2">
+
+      {/* Stack the form vertically on mobile to avoid horizontal scroll */}
+      <form onSubmit={handleAdd} className="mt-3 grid grid-cols-1 gap-2">
         <input
-          className="h-10 border rounded px-3 text-base flex-1"
+          className="h-10 border rounded px-3 text-base w-full"
           placeholder="e.g., Bench Press"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+
         <select
-          className="h-10 border rounded px-3 text-base"
+          className="h-10 border rounded px-3 text-base w-full"
           value={type}
           onChange={(e) => setType(e.target.value)}
         >
           <option value="weighted">Weighted</option>
           <option value="bodyweight">Bodyweight</option>
         </select>
+
         <button
-          className="min-h-[44px] px-4 rounded bg-black text-white"
+          className="min-h-[44px] px-4 rounded bg-black text-white w-full"
           type="submit"
         >
           Add
@@ -184,12 +188,17 @@ function ExercisesTab({ useLiveQuery }) {
       <ul className="mt-4 space-y-2">
         {(exercises ?? []).map((ex) => (
           <li key={ex.id} className="border rounded p-2">
-            <div className="flex justify-between items-center">
+            <div className="flex items-center justify-between gap-2">
+              {/* Left: name + tiny badge on its own line, truncates nicely */}
               <div className="min-w-0">
-                <span className="font-medium truncate">{ex.name}</span>
-                <span className="ml-2 text-xs text-gray-500">{ex.type}</span>
+                <div className="font-medium truncate">{ex.name}</div>
+                <span className="mt-0.5 inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                  {ex.type}
+                </span>
               </div>
-              <div className="flex gap-2">
+
+              {/* Right: buttons never shrink below content and won’t overlap */}
+              <div className="flex gap-2 shrink-0 whitespace-nowrap">
                 <button
                   className="min-h-[36px] px-3 border rounded"
                   onClick={() => onRenameExercise(ex)}
@@ -215,6 +224,7 @@ function ExercisesTab({ useLiveQuery }) {
     </div>
   );
 }
+
 
 /* ---------- Log Tab ---------- */
 function LogTab({ useLiveQuery }) {
