@@ -465,17 +465,16 @@ function onSetsBlur(itemId) {
                     <div>
                       <label className="block text-[11px] text-gray-600">Sets</label>
                       <input
-                        type="number"
-                        min={1}
-                        max={20}
-                        className="w-full h-9 border rounded px-2"
-                        value={it.defaultSets ?? 1}
-                        onChange={(e) =>
-                          updateTemplateItem(it.id, {
-                            defaultSets: Math.max(1, Math.min(20, Number(e.target.value) || 1)),
-                          })
-                        }
-                      />
+  type="text"
+  inputMode="numeric"
+  pattern="[0-9]*"
+  className="w-full h-9 border rounded px-2"
+  value={setsInputs[it.id] ?? String(it.defaultSets ?? 1)}
+  onChange={(e) => onSetsChange(it.id, e.target.value)}
+  onBlur={() => onSetsBlur(it.id)}
+  placeholder="Sets"
+/>
+
                     </div>
 
                     {!isTimed && (
