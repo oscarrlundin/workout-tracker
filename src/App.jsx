@@ -1,3 +1,7 @@
+window.onerror = (msg, src, line, col, err) => {
+  alert("Error: " + msg);
+};
+
 // src/App.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
