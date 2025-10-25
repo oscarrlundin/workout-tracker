@@ -82,6 +82,17 @@ function formatDuration(sec) {
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+/* ---------- Toast ---------- */
+function Toast({ message }) {
+  if (!message) return null;
+  return (
+    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50">
+      <div className="rounded-full bg-black text-white px-4 py-2 text-sm shadow-md">
+        {message}
+      </div>
+    </div>
+  );
+}
 
 
 /* ---------- Main App ---------- */
