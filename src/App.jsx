@@ -316,6 +316,8 @@ function TemplatesTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [name, setName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+const [setsInputs, setSetsInputs] = useState({});
+
 
   async function handleAddTemplate(e) {
     e.preventDefault();
@@ -340,6 +342,31 @@ function TemplatesTab({ useLiveQuery }) {
     () => (selectedTemplate ? getTemplateWithItems(selectedTemplate) : Promise.resolve(null)),
     [selectedTemplate]
   );
+  // Sync input state when template items change
+  useEffect(() => {
+    if (!currentTemplate?.items) return;
+    const next = {};
+    for (const it of currentTemplate.items) {
+      next[it.id] = String(it.defaultSets ?? 1);
+    }
+    setSetsInputs(next);
+  }, [currentTemplate?.items]);
+
+  function onSetsChange(itemId, val) {
+  // Let the field be temporarily empty; keep only digits (optional)
+  if (!/^\d*$/.test(val)) return;
+  setSetsInputs((prev) => ({ ...prev, [itemId]: val }));
+}
+
+function onSetsBlur(itemId) {
+  const raw = setsInputs[itemId];
+  const parsed = parseInt(raw, 10);
+  const clamped = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
+  setSetsInputs((prev) => ({ ...prev, [itemId]: String(clamped) }));
+  // Persist to Dexie only on commit
+  updateTemplateItem(itemId, { defaultSets: clamped });
+}
+
 
   return (
     <div className="overflow-x-hidden">
