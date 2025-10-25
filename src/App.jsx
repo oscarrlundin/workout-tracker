@@ -538,7 +538,25 @@ function LogTab({ useLiveQuery, showToast }) {
   const qaExercise = (exercises ?? []).find((e) => String(e.id) === String(qaExerciseId));
   const qaIsTimed = !!qaExercise?.isTimed;
   const qaIsWeighted = qaExercise?.type === "weighted";
-  const [qaNumSets, setQaNumSets] = useState(3);
+ // Number of sets input handling (string while typing, number for logic)
+const [qaNumSets, setQaNumSets] = useState(3);
+const [qaNumSetsInput, setQaNumSetsInput] = useState("3");
+
+function commitQaNumSets() {
+  const parsed = parseInt(qaNumSetsInput, 10);
+  const clamped = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
+  setQaNumSets(clamped);
+  setQaNumSetsInput(String(clamped));
+}
+
+function bumpQaNumSets(delta) {
+  const base = parseInt(qaNumSetsInput, 10);
+  const next = Number.isFinite(base) ? base + delta : delta > 0 ? 1 : 1;
+  const clamped = Math.max(1, Math.min(next, 20));
+  setQaNumSets(clamped);
+  setQaNumSetsInput(String(clamped));
+}
+
   const [qaReps, setQaReps] = useState("");          // for non-timed
   const [qaDuration, setQaDuration] = useState("");  // seconds, for timed
   const [qaWeight, setQaWeight] = useState("");      // for weighted
@@ -726,19 +744,34 @@ function LogTab({ useLiveQuery, showToast }) {
             ))}
           </select>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-700">Sets</label>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              className="h-10 w-20 border rounded px-2 text-center"
-              value={qaNumSets}
-              onChange={(e) =>
-                setQaNumSets(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
-              }
-            />
-          </div>
+         <div className="flex items-center gap-2">
+  <label className="text-sm text-gray-700">Sets</label>
+  <button
+    type="button"
+    className="h-10 w-10 border rounded"
+    onClick={() => bumpQaNumSets(-1)}
+  >
+    –
+  </button>
+  <input
+    type="text"
+    inputMode="numeric"
+    pattern="[0-9]*"
+    className="h-10 w-20 border rounded px-2 text-center"
+    value={qaNumSetsInput}
+    onChange={(e) => setQaNumSetsInput(e.target.value)}
+    onBlur={commitQaNumSets}
+    placeholder="sets"
+  />
+  <button
+    type="button"
+    className="h-10 w-10 border rounded"
+    onClick={() => bumpQaNumSets(1)}
+  >
+    +
+  </button>
+</div>
+
 
           {/* Reps or Duration depending on exercise */}
           {qaExerciseId && !qaIsTimed && (
