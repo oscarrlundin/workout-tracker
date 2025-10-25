@@ -518,7 +518,7 @@ function TemplatesTab({ useLiveQuery }) {
 }
 
 
-//* ---------- Log Tab (Phase C Lite: summary + clean layout, no animation) ---------- */
+//* ---------- Log Tab (with Quick Add Exercise) ---------- */
 function LogTab({ useLiveQuery, showToast }) {
   const exercises = useLiveQuery(getExercises, []);
   const templates = useLiveQuery(getTemplates, []);
@@ -532,6 +532,16 @@ function LogTab({ useLiveQuery, showToast }) {
   );
 
   const [expanded, setExpanded] = useState({});
+
+  // --- Quick Add Exercise state ---
+  const [qaExerciseId, setQaExerciseId] = useState("");
+  const qaExercise = (exercises ?? []).find((e) => String(e.id) === String(qaExerciseId));
+  const qaIsTimed = !!qaExercise?.isTimed;
+  const qaIsWeighted = qaExercise?.type === "weighted";
+  const [qaNumSets, setQaNumSets] = useState(3);
+  const [qaReps, setQaReps] = useState("");          // for non-timed
+  const [qaDuration, setQaDuration] = useState("");  // seconds, for timed
+  const [qaWeight, setQaWeight] = useState("");      // for weighted
 
   function toggleExpanded(exId) {
     setExpanded((prev) => ({ ...prev, [exId]: !prev[exId] }));
@@ -579,6 +589,48 @@ function LogTab({ useLiveQuery, showToast }) {
       weightKg: isWeighted ? null : null,
     });
     showToast("Set added");
+  }
+
+  // Quick Add Exercise -> create N sets for selected exercise using defaults typed here
+  async function handleQuickAdd(e) {
+    e.preventDefault();
+    if (!qaExerciseId) return;
+
+    const exId = Number(qaExerciseId);
+    const ex = (exercises ?? []).find((x) => x.id === exId);
+    if (!ex) return;
+
+    const wid = workoutId || (await createWorkout(selectedDate));
+
+    // figure out where to continue setIndex
+    const currentMax =
+      Math.max(
+        0,
+        ...((sets ?? [])
+          .filter((s) => s.exerciseId === exId)
+          .map((s) => s.setIndex || 0))
+      ) || 0;
+
+    const count = Math.max(1, Math.min(Number(qaNumSets) || 1, 20));
+
+    for (let i = 0; i < count; i++) {
+      await addSet({
+        workoutId: wid,
+        exerciseId: exId,
+        setIndex: currentMax + i + 1,
+        reps: ex.isTimed ? null : (qaReps === "" ? null : Number(qaReps)),
+        durationSec: ex.isTimed ? (qaDuration === "" ? null : Number(qaDuration)) : null,
+        weightKg: ex.type === "weighted" ? (qaWeight === "" ? null : Number(qaWeight)) : null,
+      });
+    }
+
+    await updatePRForExercise(exId);
+    showToast(`${count} set${count > 1 ? "s" : ""} added to ${ex.name}`);
+
+    // keep exercise selected but clear fields
+    setQaReps("");
+    setQaDuration("");
+    setQaWeight("");
   }
 
   // Group sets by exercise
@@ -656,7 +708,78 @@ function LogTab({ useLiveQuery, showToast }) {
         </select>
       </div>
 
-      {/* Exercises grouped */}
+      {/* Quick Add Exercise */}
+      <form onSubmit={handleQuickAdd} className="mt-4 border rounded p-3">
+        <h3 className="font-semibold">Add Exercise</h3>
+
+        <div className="mt-2 grid grid-cols-1 gap-2">
+          <select
+            className="h-10 border rounded px-3 text-base"
+            value={qaExerciseId}
+            onChange={(e) => setQaExerciseId(e.target.value)}
+          >
+            <option value="">Select exercise…</option>
+            {(exercises ?? []).map((ex) => (
+              <option key={ex.id} value={ex.id}>
+                {ex.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Sets</label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              className="h-10 w-20 border rounded px-2 text-center"
+              value={qaNumSets}
+              onChange={(e) =>
+                setQaNumSets(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
+              }
+            />
+          </div>
+
+          {/* Reps or Duration depending on exercise */}
+          {qaExerciseId && !qaIsTimed && (
+            <input
+              type="number"
+              className="h-10 border rounded px-3 text-base"
+              placeholder="Reps (optional)"
+              value={qaReps}
+              onChange={(e) => setQaReps(e.target.value)}
+            />
+          )}
+
+          {qaExerciseId && qaIsTimed && (
+            <input
+              type="number"
+              className="h-10 border rounded px-3 text-base"
+              placeholder="Duration in seconds (optional)"
+              value={qaDuration}
+              onChange={(e) => setQaDuration(e.target.value)}
+            />
+          )}
+
+          {/* Weight if weighted */}
+          {qaExerciseId && qaIsWeighted && (
+            <input
+              type="number"
+              step="0.5"
+              className="h-10 border rounded px-3 text-base"
+              placeholder="Weight (kg, optional)"
+              value={qaWeight}
+              onChange={(e) => setQaWeight(e.target.value)}
+            />
+          )}
+
+          <button className="min-h-[44px] px-4 rounded bg-black text-white">
+            Add to Workout
+          </button>
+        </div>
+      </form>
+
+      {/* Grouped exercises */}
       <div className="mt-4 space-y-3">
         {Object.entries(groupedSets).map(([exId, exSets]) => {
           const exercise = exercises?.find((e) => e.id === Number(exId));
@@ -668,7 +791,6 @@ function LogTab({ useLiveQuery, showToast }) {
           const repsList = exSets.map((s) => s.reps).filter((r) => r != null);
           const durList = exSets.map((s) => s.durationSec).filter((r) => r != null);
           const wList = exSets.map((s) => s.weightKg).filter((r) => r != null);
-
           const uniformReps =
             repsList.length && repsList.every((v) => v === repsList[0]) ? repsList[0] : null;
           const uniformDur =
@@ -798,6 +920,7 @@ function LogTab({ useLiveQuery, showToast }) {
     </div>
   );
 }
+
 
 
 
