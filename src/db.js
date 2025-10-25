@@ -262,3 +262,8 @@ export async function importAll(payload, { mode = "replace" } = {}) {
   );
   await recalcAllPRs();
 }
+// Ensure database is opened immediately (avoids version upgrade issues)
+db.open().catch((err) => {
+  console.error("Dexie failed to open:", err);
+});
+
