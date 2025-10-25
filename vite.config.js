@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Workout Tracker',
-        short_name: 'Workouts',
-        description: 'Log sets and track progress offline.',
+        name: 'Repped',
+        short_name: 'Repped',
+        description: 'Repped — your minimalist workout tracker with PR tracking and progress insights.',
         theme_color: '#000000',
         background_color: '#ffffff',
         display: 'standalone',

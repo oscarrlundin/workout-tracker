@@ -121,7 +121,7 @@ export default function App() {
 
   return (
     <div className="min-h-[100svh] max-w-xl mx-auto p-4 safe-top safe-bottom bg-white">
-      <h1 className="text-2xl font-bold">Workout Tracker (Local)</h1>
+      <h1 className="text-2xl font-bold">Repped</h1>
 
       <div className="mt-4 pb-24">
         {tab === "Log" && <LogTab useLiveQuery={useLiveQueryHook} showToast={showToast} />}
