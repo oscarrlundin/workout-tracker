@@ -20,6 +20,12 @@ import {
   getPR,
   updatePRForExercise,
   recalcAllPRs,
+  getTemplates,
+  getTemplateWithItems,
+  addTemplate,
+  deleteTemplate,
+  addTemplateItem,
+  deleteTemplateItem,
 } from "./db";
 import { liveQuery } from "dexie";
 import {
@@ -32,17 +38,17 @@ import {
   CartesianGrid,
 } from "recharts";
 
-const TABS = ["Log", "Progress", "Exercises", "Settings"];
+const TABS = ["Log", "Progress", "Exercises", "Templates", "Settings"];
 
-/* ---------- Shared hooks & utils ---------- */
+/* ---------- Shared utils ---------- */
 function useLiveQueryHook(queryFn, deps = []) {
   const [data, setData] = useState(null);
   useEffect(() => {
-    const subscription = liveQuery(queryFn).subscribe({
-      next: (value) => setData(value),
+    const sub = liveQuery(queryFn).subscribe({
+      next: (v) => setData(v),
       error: (err) => console.error(err),
     });
-    return () => subscription.unsubscribe();
+    return () => sub.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   return data;
@@ -50,10 +56,7 @@ function useLiveQueryHook(queryFn, deps = []) {
 
 function todayISO() {
   const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  return d.toISOString().slice(0, 10);
 }
 
 function downloadJSON(filename, data) {
@@ -64,7 +67,6 @@ function downloadJSON(filename, data) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
-  document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
@@ -77,32 +79,20 @@ function formatDuration(sec) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/* ---------- Toast (tiny) ---------- */
-function Toast({ message }) {
-  if (!message) return null;
-  return (
-    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50">
-      <div className="rounded-full bg-black text-white px-4 py-2 text-sm shadow-md">
-        {message}
-      </div>
-    </div>
-  );
-}
 
-/* ---------- App ---------- */
+/* ---------- Main App ---------- */
 export default function App() {
   const [tab, setTab] = useState("Log");
   const [toast, setToast] = useState("");
 
   useEffect(() => {
-    // Recalculate PRs once on app start (safe & fast at current scales)
     recalcAllPRs();
   }, []);
 
   function showToast(msg) {
     setToast(msg);
-    window.clearTimeout(showToast._t);
-    showToast._t = window.setTimeout(() => setToast(""), 2200);
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => setToast(""), 2200);
   }
 
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -126,16 +116,13 @@ export default function App() {
       <div className="mt-4 pb-24">
         {tab === "Log" && <LogTab useLiveQuery={useLiveQueryHook} showToast={showToast} />}
         {tab === "Progress" && <ProgressTab useLiveQuery={useLiveQueryHook} />}
-        {tab === "Exercises" && (
-          <ExercisesTab useLiveQuery={useLiveQueryHook} />
-        )}
+        {tab === "Exercises" && <ExercisesTab useLiveQuery={useLiveQueryHook} />}
+        {tab === "Templates" && <TemplatesTab useLiveQuery={useLiveQueryHook} />}
         {tab === "Settings" && <SettingsTab />}
       </div>
 
-      {/* Toast */}
       <Toast message={toast} />
 
-      {/* Sticky bottom tab bar */}
       <nav className="fixed bottom-0 left-0 right-0 border-t bg-white safe-bottom">
         <div className="mx-auto max-w-xl flex justify-around">
           {TABS.map((t) => (
@@ -155,7 +142,7 @@ export default function App() {
   );
 }
 
-/* ---------- Exercises Tab (unchanged behavior except earlier UI polish) ---------- */
+/* ---------- Exercises Tab ---------- */
 function ExercisesTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []);
   const [name, setName] = useState("");
@@ -163,7 +150,6 @@ function ExercisesTab({ useLiveQuery }) {
   const [isTimed, setIsTimed] = useState(false);
   const [error, setError] = useState("");
 
-  // inline editor state
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editTimed, setEditTimed] = useState(false);
@@ -176,61 +162,27 @@ function ExercisesTab({ useLiveQuery }) {
       setName("");
       setType("weighted");
       setIsTimed(false);
-      setError("");
     } catch (err) {
-      setError(err.message || "Failed to add exercise");
+      setError(err.message);
     }
-  }
-
-  function startEdit(ex) {
-    setEditingId(ex.id);
-    setEditName(ex.name);
-    setEditTimed(!!ex.isTimed);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditName("");
-    setEditTimed(false);
   }
 
   async function saveEdit(ex) {
     try {
-      if (editName.trim() && editName.trim() !== ex.name) {
+      if (editName.trim() && editName.trim() !== ex.name)
         await updateExerciseName(ex.id, editName.trim());
-      }
-      if (editTimed !== !!ex.isTimed) {
+      if (editTimed !== !!ex.isTimed)
         await updateExerciseTimed(ex.id, editTimed);
-      }
-      cancelEdit();
+      setEditingId(null);
     } catch (e) {
-      alert(e.message || "Could not save changes.");
+      alert(e.message);
     }
   }
 
   async function onDeleteExercise(id, label) {
-    const ok = window.confirm(
-      `Delete "${label}"?\n\nThis will also delete all sets logged for this exercise.`
-    );
-    if (!ok) return;
+    if (!window.confirm(`Delete "${label}"?`)) return;
     await deleteExercise(id);
   }
-
-  const PencilIcon = (props) => (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-  const TrashIcon = (props) => (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-      <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-    </svg>
-  );
 
   return (
     <div className="overflow-x-hidden">
@@ -243,127 +195,225 @@ function ExercisesTab({ useLiveQuery }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-
         <div className="grid grid-cols-2 gap-2">
           <select
-            className="h-10 border rounded px-3 text-base w-full"
+            className="h-10 border rounded px-3 text-base"
             value={type}
             onChange={(e) => setType(e.target.value)}
           >
             <option value="weighted">Weighted</option>
             <option value="bodyweight">Bodyweight</option>
           </select>
-
-          <label className="h-10 border rounded px-3 text-base w-full flex items-center gap-2">
+          <label className="h-10 border rounded px-3 flex items-center gap-2 text-base">
             <input
               type="checkbox"
               checked={isTimed}
               onChange={(e) => setIsTimed(e.target.checked)}
             />
-            Timed exercise (use duration)
+            Timed
           </label>
         </div>
-
-        <button
-          className="min-h-[44px] px-4 rounded bg-black text-white w-full"
-          type="submit"
-        >
+        <button className="min-h-[44px] px-4 rounded bg-black text-white">
           Add
         </button>
       </form>
-      {error && <p className="mt-2 text-red-600 text-sm">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       <ul className="mt-4 space-y-2">
         {(exercises ?? []).map((ex) => (
           <li key={ex.id} className="border rounded p-2">
-            <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
-              <div className="min-w-0">
+            <div className="flex justify-between items-start">
+              <div>
                 <div className="font-medium break-words">{ex.name}</div>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                <div className="flex gap-1 mt-1">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                     {ex.type}
                   </span>
                   {ex.isTimed && (
-                    <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                       timed
                     </span>
                   )}
                 </div>
               </div>
-
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2">
                 <button
-                  className="min-h-[36px] px-2 border rounded flex items-center justify-center"
+                  className="border rounded px-2"
                   onClick={() => {
                     setEditingId(ex.id);
                     setEditName(ex.name);
                     setEditTimed(!!ex.isTimed);
                   }}
-                  aria-label="Edit exercise (name & timed)"
-                  title="Edit"
                 >
-                  <PencilIcon />
+                  ✏️
                 </button>
                 <button
-                  className="min-h-[36px] px-2 border rounded flex items-center justify-center"
+                  className="border rounded px-2"
                   onClick={() => onDeleteExercise(ex.id, ex.name)}
-                  aria-label="Delete exercise"
-                  title="Delete"
                 >
-                  <TrashIcon />
+                  🗑
                 </button>
               </div>
             </div>
 
             {editingId === ex.id && (
-              <div className="mt-3 border-t pt-3">
-                <div className="grid grid-cols-1 gap-2">
+              <div className="mt-2 border-t pt-2">
+                <input
+                  className="h-10 border rounded px-3 w-full mb-2"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+                <label className="flex items-center gap-2 text-sm">
                   <input
-                    className="h-10 border rounded px-3 text-base w-full"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="Exercise name"
+                    type="checkbox"
+                    checked={editTimed}
+                    onChange={(e) => setEditTimed(e.target.checked)}
                   />
-                  <label className="h-10 border rounded px-3 text-base w-full flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={editTimed}
-                      onChange={(e) => setEditTimed(e.target.checked)}
-                    />
-                    Timed exercise (use duration)
-                  </label>
-                </div>
-                <div className="mt-2 flex gap-2">
+                  Timed
+                </label>
+                <div className="flex gap-2 mt-2">
                   <button
-                    className="min-h-[36px] px-4 rounded bg-black text-white"
+                    className="px-3 py-1 rounded bg-black text-white"
                     onClick={() => saveEdit(ex)}
                   >
                     Save
                   </button>
                   <button
-                    className="min-h-[36px] px-4 rounded border"
-                    onClick={() => {
-                      setEditingId(null);
-                      setEditName("");
-                      setEditTimed(false);
-                    }}
+                    className="px-3 py-1 rounded border"
+                    onClick={() => setEditingId(null)}
                   >
                     Cancel
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Note: Switching timed ↔ reps is blocked if this exercise
-                  already has logged sets.
-                </p>
               </div>
             )}
           </li>
         ))}
-
-        {exercises?.length === 0 && (
-          <p className="text-gray-500">No exercises yet — add one above.</p>
-        )}
       </ul>
+    </div>
+  );
+}
+
+/* ---------- Templates Tab ---------- */
+function TemplatesTab({ useLiveQuery }) {
+  const templates = useLiveQuery(getTemplates, []);
+  const exercises = useLiveQuery(getExercises, []);
+  const [name, setName] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+
+  async function handleAddTemplate(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const id = await addTemplate(name.trim());
+    setName("");
+    setSelectedTemplate(id);
+  }
+
+  async function handleDeleteTemplate(id) {
+    if (!window.confirm("Delete this template?")) return;
+    await deleteTemplate(id);
+    if (selectedTemplate === id) setSelectedTemplate(null);
+  }
+
+  async function handleAddExerciseToTemplate(exId) {
+    if (!selectedTemplate) return;
+    await addTemplateItem(selectedTemplate, exId);
+  }
+
+  const currentTemplate = useLiveQuery(
+    () =>
+      selectedTemplate
+        ? getTemplateWithItems(selectedTemplate)
+        : Promise.resolve(null),
+    [selectedTemplate]
+  );
+
+  return (
+    <div>
+      <h2 className="font-semibold">Workout Templates</h2>
+
+      <form onSubmit={handleAddTemplate} className="mt-3 flex gap-2">
+        <input
+          className="flex-1 h-10 border rounded px-3"
+          placeholder="Template name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button className="bg-black text-white px-4 rounded">Add</button>
+      </form>
+
+      <ul className="mt-4 space-y-2">
+        {(templates ?? []).map((t) => (
+          <li
+            key={t.id}
+            className={`border rounded p-2 ${
+              selectedTemplate === t.id ? "bg-gray-50" : ""
+            }`}
+            onClick={() => setSelectedTemplate(t.id)}
+          >
+            <div className="flex justify-between items-center">
+              <span className="font-medium">{t.name}</span>
+              <button
+                className="text-xs text-gray-500"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteTemplate(t.id);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {currentTemplate?.template && (
+        <div className="mt-4 border-t pt-3">
+          <h3 className="font-semibold">
+            {currentTemplate.template.name} Exercises
+          </h3>
+
+          <select
+            className="mt-2 h-10 border rounded px-3 w-full"
+            onChange={(e) => {
+              const exId = Number(e.target.value);
+              if (exId) handleAddExerciseToTemplate(exId);
+              e.target.value = "";
+            }}
+            defaultValue=""
+          >
+            <option value="">Add Exercise...</option>
+            {(exercises ?? []).map((ex) => (
+              <option key={ex.id} value={ex.id}>
+                {ex.name}
+              </option>
+            ))}
+          </select>
+
+          <ul className="mt-3 space-y-1">
+            {(currentTemplate.items ?? []).map((it) => {
+              const ex = exercises?.find((e) => e.id === it.exerciseId);
+              return (
+                <li
+                  key={it.id}
+                  className="flex justify-between items-center border rounded px-2 py-1 text-sm"
+                >
+                  <span>{ex?.name ?? "Unknown Exercise"}</span>
+                  <button
+                    className="text-xs text-gray-500"
+                    onClick={() => deleteTemplateItem(it.id)}
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+            {currentTemplate.items?.length === 0 && (
+              <p className="text-gray-500 text-sm">No exercises yet.</p>
+            )}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

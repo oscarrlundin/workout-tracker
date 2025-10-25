@@ -3,29 +3,23 @@ import Dexie from "dexie";
 
 export const db = new Dexie("workout-tracker");
 
-// v1 (original tables)
-db.version(1).stores({
-  exercises: "++id, name, type, createdAt",
-  workouts: "++id, dateISO, notes",
-  sets: "++id, workoutId, exerciseId, setIndex, reps, weightKg",
-});
-
-// v2 (adds durationSec and prs table)
-db.version(2).stores({
+// bump to v3 — add templates + templateItems
+db.version(3).stores({
   exercises: "++id, name, type, createdAt",
   workouts: "++id, dateISO, notes",
   sets: "++id, workoutId, exerciseId, setIndex, reps, weightKg, durationSec",
-  prs: "exerciseId", // 1 row per exercise
+  prs: "exerciseId",
+  templates: "++id, name, createdAt",
+  templateItems:
+    "++id, templateId, exerciseId, order, defaultReps, defaultDurationSec, defaultWeightKg",
 });
 
-/* ---------------- Helpers: Exercises ---------------- */
-
+/* ---------------- Exercises ---------------- */
 export async function addExercise({ name, type = "weighted", isTimed = false }) {
   const clean = String(name || "").trim();
   if (!clean) throw new Error("Exercise name is required");
-  if (!["weighted", "bodyweight"].includes(type)) {
+  if (!["weighted", "bodyweight"].includes(type))
     throw new Error("Invalid exercise type");
-  }
   const now = new Date().toISOString();
   return db.exercises.add({ name: clean, type, isTimed: !!isTimed, createdAt: now });
 }
@@ -42,11 +36,10 @@ export async function updateExerciseName(id, name) {
 
 export async function updateExerciseTimed(id, isTimed) {
   const count = await db.sets.where("exerciseId").equals(id).count();
-  if (count > 0) {
+  if (count > 0)
     throw new Error(
-      "Cannot convert timed/reps because this exercise already has logged sets. (Delete sets first or create a new exercise.)"
+      "Cannot convert timed/reps because this exercise already has logged sets."
     );
-  }
   return db.exercises.update(id, { isTimed: !!isTimed });
 }
 
@@ -58,23 +51,19 @@ export async function deleteExercise(id) {
   });
 }
 
-/* ---------------- Helpers: Workouts ---------------- */
-
+/* ---------------- Workouts ---------------- */
 export async function createWorkout(dateISO, notes = "") {
   const cleanDate = String(dateISO || "").slice(0, 10);
-  if (!cleanDate) throw new Error("dateISO required");
   const existing = await db.workouts.where("dateISO").equals(cleanDate).first();
   if (existing) return existing.id;
   return db.workouts.add({ dateISO: cleanDate, notes });
 }
-
 export async function getWorkoutsByDate(dateISO) {
   const d = String(dateISO || "").slice(0, 10);
   return db.workouts.where("dateISO").equals(d).toArray();
 }
 
 /* ---------------- Utils ---------------- */
-
 export function epley1RM(weight, reps) {
   const w = Number(weight || 0);
   const r = Number(reps || 0);
@@ -82,8 +71,7 @@ export function epley1RM(weight, reps) {
   return Math.round(w * (1 + r / 30));
 }
 
-/* ---------------- Helpers: Sets ---------------- */
-
+/* ---------------- Sets ---------------- */
 export async function addSet({
   workoutId,
   exerciseId,
@@ -93,7 +81,7 @@ export async function addSet({
   durationSec = null,
 }) {
   if (!workoutId || !exerciseId || !setIndex) throw new Error("Missing fields");
-  const id = await db.sets.add({
+  return db.sets.add({
     workoutId,
     exerciseId,
     setIndex,
@@ -101,79 +89,38 @@ export async function addSet({
     weightKg: typeof weightKg === "number" ? weightKg : null,
     durationSec: typeof durationSec === "number" ? durationSec : null,
   });
-  return id;
 }
-
 export async function updateSet(id, patch) {
-  const clean = {};
-  if ("reps" in patch) clean.reps = patch.reps ?? null;
-  if ("weightKg" in patch)
-    clean.weightKg =
-      typeof patch.weightKg === "number" ? patch.weightKg : null;
-  if ("durationSec" in patch)
-    clean.durationSec =
-      typeof patch.durationSec === "number" ? patch.durationSec : null;
-  if ("setIndex" in patch) clean.setIndex = patch.setIndex;
-
   const existing = await db.sets.get(id);
-  await db.sets.update(id, clean);
+  await db.sets.update(id, patch);
   return existing?.exerciseId ?? null;
 }
-
 export async function deleteSet(id) {
   const existing = await db.sets.get(id);
   await db.sets.delete(id);
   return existing?.exerciseId ?? null;
 }
-
 export async function getSetsForWorkout(workoutId) {
   return db.sets.where("workoutId").equals(workoutId).sortBy("setIndex");
 }
-
 export async function getSetsForExercise(exerciseId) {
   return db.sets.where("exerciseId").equals(exerciseId).toArray();
 }
 
-/* ---------------- PRs: compute & store ---------------- */
-
+/* ---------------- PRs ---------------- */
 export async function updatePRForExercise(exerciseId) {
   const [ex, sets, prev] = await Promise.all([
     db.exercises.get(exerciseId),
     db.sets.where("exerciseId").equals(exerciseId).toArray(),
     db.prs.get(exerciseId),
   ]);
-
   if (!ex) return null;
 
-  const bestWeight = (() => {
-    const vals = sets.map((s) => (typeof s.weightKg === "number" ? s.weightKg : 0));
-    const m = Math.max(0, ...vals);
-    return m > 0 ? m : null;
-  })();
-
-  const bestReps = (() => {
-    const vals = sets.map((s) => (typeof s.reps === "number" ? s.reps : 0));
-    const m = Math.max(0, ...vals);
-    return m > 0 ? m : null;
-  })();
-
-  const bestDurationSec = (() => {
-    const vals = sets.map((s) =>
-      typeof s.durationSec === "number" ? s.durationSec : 0
-    );
-    const m = Math.max(0, ...vals);
-    return m > 0 ? m : null;
-  })();
-
-  const best1RM = (() => {
-    const vals = sets.map((s) =>
-      typeof s.weightKg === "number" && typeof s.reps === "number"
-        ? epley1RM(s.weightKg, s.reps)
-        : 0
-    );
-    const m = Math.max(0, ...vals);
-    return m > 0 ? m : null;
-  })();
+  const bestWeight = Math.max(0, ...sets.map((s) => s.weightKg || 0)) || null;
+  const bestReps = Math.max(0, ...sets.map((s) => s.reps || 0)) || null;
+  const bestDurationSec = Math.max(0, ...sets.map((s) => s.durationSec || 0)) || null;
+  const best1RM =
+    Math.max(0, ...sets.map((s) => epley1RM(s.weightKg || 0, s.reps || 0))) || null;
 
   const next = {
     exerciseId,
@@ -183,46 +130,66 @@ export async function updatePRForExercise(exerciseId) {
     best1RM,
     updatedAt: new Date().toISOString(),
   };
-
-  const improvements = {};
-  if (prev) {
-    if ((next.bestWeight ?? 0) > (prev.bestWeight ?? 0))
-      improvements.bestWeight = { old: prev.bestWeight ?? null, new: next.bestWeight };
-    if ((next.bestReps ?? 0) > (prev.bestReps ?? 0))
-      improvements.bestReps = { old: prev.bestReps ?? null, new: next.bestReps };
-    if ((next.bestDurationSec ?? 0) > (prev.bestDurationSec ?? 0))
-      improvements.bestDurationSec = {
-        old: prev.bestDurationSec ?? null,
-        new: next.bestDurationSec,
-      };
-    if ((next.best1RM ?? 0) > (prev.best1RM ?? 0))
-      improvements.best1RM = { old: prev.best1RM ?? null, new: next.best1RM };
-  } else {
-    if (next.bestWeight != null) improvements.bestWeight = { old: null, new: next.bestWeight };
-    if (next.bestReps != null) improvements.bestReps = { old: null, new: next.bestReps };
-    if (next.bestDurationSec != null)
-      improvements.bestDurationSec = { old: null, new: next.bestDurationSec };
-    if (next.best1RM != null) improvements.best1RM = { old: null, new: next.best1RM };
-  }
-
   await db.prs.put(next);
-  return { current: next, improvements };
+  return { current: next };
 }
-
 export async function getPR(exerciseId) {
   return db.prs.get(exerciseId);
 }
-
-/** ✅ Recalculate PRs for every exercise (used on startup/import) */
 export async function recalcAllPRs() {
   const exs = await db.exercises.toArray();
-  for (const ex of exs) {
-    await updatePRForExercise(ex.id);
-  }
+  for (const ex of exs) await updatePRForExercise(ex.id);
+}
+
+/* ---------------- Templates ---------------- */
+export async function addTemplate(name) {
+  const clean = String(name || "").trim();
+  if (!clean) throw new Error("Template name required");
+  const now = new Date().toISOString();
+  return db.templates.add({ name: clean, createdAt: now });
+}
+export async function renameTemplate(id, name) {
+  const clean = String(name || "").trim();
+  if (!clean) throw new Error("Name required");
+  return db.templates.update(id, { name: clean });
+}
+export async function deleteTemplate(id) {
+  return db.transaction("rw", db.templates, db.templateItems, async () => {
+    await db.templateItems.where("templateId").equals(id).delete();
+    await db.templates.delete(id);
+  });
+}
+export async function getTemplates() {
+  return db.templates.orderBy("createdAt").toArray();
+}
+export async function getTemplateWithItems(id) {
+  const template = await db.templates.get(id);
+  const items = await db.templateItems.where("templateId").equals(id).sortBy("order");
+  return { template, items };
+}
+
+/* ---------------- Template Items ---------------- */
+export async function addTemplateItem(templateId, exerciseId) {
+  const existing = await db.templateItems.where({ templateId, exerciseId }).first();
+  if (existing) return existing.id;
+  const count = await db.templateItems.where("templateId").equals(templateId).count();
+  return db.templateItems.add({
+    templateId,
+    exerciseId,
+    order: count + 1,
+    defaultReps: null,
+    defaultDurationSec: null,
+    defaultWeightKg: null,
+  });
+}
+export async function deleteTemplateItem(id) {
+  return db.templateItems.delete(id);
+}
+export async function updateTemplateItem(id, patch) {
+  return db.templateItems.update(id, patch);
 }
 
 /* ---------------- Export / Import ---------------- */
-
 export async function exportAll() {
   const data = await db.transaction(
     "r",
@@ -230,69 +197,68 @@ export async function exportAll() {
     db.workouts,
     db.sets,
     db.prs,
+    db.templates,
+    db.templateItems,
     async () => {
-      const [exercises, workouts, sets, prs] = await Promise.all([
-        db.exercises.toArray(),
-        db.workouts.toArray(),
-        db.sets.toArray(),
-        db.prs.toArray(),
-      ]);
-      return { exercises, workouts, sets, prs };
+      const [exercises, workouts, sets, prs, templates, templateItems] =
+        await Promise.all([
+          db.exercises.toArray(),
+          db.workouts.toArray(),
+          db.sets.toArray(),
+          db.prs.toArray(),
+          db.templates.toArray(),
+          db.templateItems.toArray(),
+        ]);
+      return { exercises, workouts, sets, prs, templates, templateItems };
     }
   );
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     exportedAt: new Date().toISOString(),
     tables: data,
   };
 }
 
 export async function importAll(payload, { mode = "replace" } = {}) {
-  if (!payload || typeof payload !== "object" || !payload.tables) {
+  if (!payload || typeof payload !== "object" || !payload.tables)
     throw new Error("Invalid payload");
-  }
-  const { exercises = [], workouts = [], sets = [], prs = [] } = payload.tables;
+  const {
+    exercises = [],
+    workouts = [],
+    sets = [],
+    prs = [],
+    templates = [],
+    templateItems = [],
+  } = payload.tables;
 
-  if (mode === "replace") {
-    await db.transaction(
-      "rw",
-      db.exercises,
-      db.workouts,
-      db.sets,
-      db.prs,
-      async () => {
-        await db.sets.clear();
-        await db.workouts.clear();
-        await db.prs.clear();
-        await db.exercises.clear();
-
-        if (exercises.length) await db.exercises.bulkPut(exercises);
-        if (workouts.length) await db.workouts.bulkPut(workouts);
-        if (sets.length) await db.sets.bulkPut(sets);
-        if (prs.length) await db.prs.bulkPut(prs);
+  await db.transaction(
+    "rw",
+    db.exercises,
+    db.workouts,
+    db.sets,
+    db.prs,
+    db.templates,
+    db.templateItems,
+    async () => {
+      if (mode === "replace") {
+        await Promise.all([
+          db.exercises.clear(),
+          db.workouts.clear(),
+          db.sets.clear(),
+          db.prs.clear(),
+          db.templates.clear(),
+          db.templateItems.clear(),
+        ]);
       }
-    );
-    await recalcAllPRs();
-    return;
-  }
-
-  if (mode === "merge") {
-    await db.transaction(
-      "rw",
-      db.exercises,
-      db.workouts,
-      db.sets,
-      db.prs,
-      async () => {
-        if (exercises.length) await db.exercises.bulkPut(exercises);
-        if (workouts.length) await db.workouts.bulkPut(workouts);
-        if (sets.length) await db.sets.bulkPut(sets);
-        if (prs.length) await db.prs.bulkPut(prs);
-      }
-    );
-    await recalcAllPRs();
-    return;
-  }
-
-  throw new Error("Unknown import mode");
+      await Promise.all([
+        db.exercises.bulkPut(exercises),
+        db.workouts.bulkPut(workouts),
+        db.sets.bulkPut(sets),
+        db.prs.bulkPut(prs),
+        db.templates.bulkPut(templates),
+        db.templateItems.bulkPut(templateItems),
+      ]);
+    }
+  );
+  await recalcAllPRs();
 }
