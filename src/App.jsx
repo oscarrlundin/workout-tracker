@@ -518,176 +518,59 @@ function TemplatesTab({ useLiveQuery }) {
 }
 
 
-/* ---------- Log Tab (restored + sets count + template defaults) ---------- */
+/* ---------- Log Tab (Phase A: grouped + expandable) ---------- */
 function LogTab({ useLiveQuery, showToast }) {
-  // DATE FIRST (top)
-  const [dateISO, setDateISO] = useState(todayISO());
-
-  const workoutsForDay = useLiveQuery(() => getWorkoutsByDate(dateISO), [dateISO]);
-  const [workoutId, setWorkoutId] = useState(null);
-  useEffect(() => {
-    setWorkoutId(workoutsForDay?.[0]?.id ?? null);
-  }, [workoutsForDay]);
-
   const exercises = useLiveQuery(getExercises, []);
   const templates = useLiveQuery(getTemplates, []);
-  const setsForWorkout = useLiveQuery(
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+
+  const workouts = useLiveQuery(() => getWorkoutsByDate(selectedDate), [selectedDate]);
+  const workoutId = workouts?.[0]?.id;
+  const sets = useLiveQuery(
     () => (workoutId ? getSetsForWorkout(workoutId) : Promise.resolve([])),
     [workoutId]
   );
 
-  const [selectedExerciseId, setSelectedExerciseId] = useState("");
-  const selectedExercise = (exercises ?? []).find(
-    (e) => String(e.id) === String(selectedExerciseId)
-  );
-  const isTimed = !!selectedExercise?.isTimed;
-  const isWeighted = selectedExercise?.type === "weighted";
+  const [expanded, setExpanded] = useState({});
 
-  // how many sets UI
-  const [numSetsInput, setNumSetsInput] = useState("3");
-  const [numSets, setNumSets] = useState(3);
-  const [rows, setRows] = useState([{ reps: "", weight: "", min: "", sec: "" }]);
+  function toggleExpanded(exId) {
+    setExpanded((prev) => ({ ...prev, [exId]: !prev[exId] }));
+  }
 
-  function syncRows(count) {
-    const c = Math.max(1, Math.min(count, 20));
-    setNumSets(c);
-    setRows((prev) => {
-      const next = Array.from({ length: c }, (_, i) => prev[i] ?? { reps: "", weight: "", min: "", sec: "" });
-      return next;
+  async function handleUpdateSet(id, field, value) {
+    const patch = { [field]: value === "" ? null : Number(value) };
+    const exId = await updateSet(id, patch);
+    if (exId) await updatePRForExercise(exId);
+  }
+
+  async function handleDeleteSet(id) {
+    if (!window.confirm("Delete this set?")) return;
+    const exId = await deleteSet(id);
+    if (exId) await updatePRForExercise(exId);
+  }
+
+  // helper for grouped sets by exercise
+  const groupedSets = useMemo(() => {
+    const grouped = {};
+    (sets ?? []).forEach((s) => {
+      if (!grouped[s.exerciseId]) grouped[s.exerciseId] = [];
+      grouped[s.exerciseId].push(s);
     });
-  }
-  function onNumSetsTyping(v) {
-    if (!/^\d{0,2}$/.test(v)) return;
-    setNumSetsInput(v);
-  }
-  function onNumSetsBlur() {
-    const parsed = parseInt(numSetsInput, 10);
-    const safe = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
-    setNumSetsInput(String(safe));
-    syncRows(safe);
-  }
-  function bumpSets(delta) {
-    const base = parseInt(numSetsInput || "0", 10);
-    const next = Number.isFinite(base) ? Math.max(1, Math.min(base + delta, 20)) : 1;
-    setNumSetsInput(String(next));
-    syncRows(next);
-  }
+    return grouped;
+  }, [sets]);
 
-  async function ensureWorkout() {
-    if (workoutId) return workoutId;
-    const id = await createWorkout(dateISO);
-    setWorkoutId(id);
-    return id;
-  }
-
-  // Load template: create defaultSets sets for each exercise with defaults
-  async function handleLoadTemplate(templateId) {
-    if (!templateId) return;
-    const data = await getTemplateWithItems(Number(templateId));
-    if (!data?.items?.length) return alert("This template has no exercises.");
-    const wid = await ensureWorkout();
-
-    for (const item of data.items) {
-      const ex = (exercises ?? []).find((e) => e.id === item.exerciseId);
-      const isTimedX = !!ex?.isTimed;
-      const isWeightedX = ex?.type === "weighted";
-      const count = Math.max(1, item.defaultSets ?? 1);
-
-      // find current max index for this exercise to continue numbering
-      const currentMax =
-        Math.max(
-          0,
-          ...((setsForWorkout ?? [])
-            .filter((s) => s.exerciseId === item.exerciseId)
-            .map((s) => s.setIndex || 0))
-        ) || 0;
-
-      for (let i = 0; i < count; i++) {
-        await addSet({
-          workoutId: wid,
-          exerciseId: item.exerciseId,
-          setIndex: currentMax + i + 1,
-          reps: isTimedX ? null : (item.defaultReps ?? null),
-          weightKg: isWeightedX ? (item.defaultWeightKg ?? null) : null,
-          durationSec: isTimedX ? (item.defaultDurationSec ?? null) : null,
-        });
-      }
-    }
-
-    showToast(`Loaded template: ${data.template.name}`);
-  }
-
-  async function addExerciseSets() {
-    if (!selectedExerciseId) return;
-    const wid = await ensureWorkout();
-
-    // find current max setIndex for this exercise
-    const currentMax =
-      Math.max(
-        0,
-        ...((setsForWorkout ?? [])
-          .filter((s) => s.exerciseId === Number(selectedExerciseId))
-          .map((s) => s.setIndex || 0))
-      ) || 0;
-
-    for (let i = 0; i < numSets; i++) {
-      const r = rows[i] || {};
-      if (isTimed) {
-        const m = Number(r.min || 0);
-        const s = Number(r.sec || 0);
-        const total = Math.round((m >= 0 ? m : 0) * 60 + (s >= 0 ? s : 0));
-        if (!Number.isFinite(total) || total <= 0) continue;
-        const weightNum = isWeighted && r.weight !== "" ? Number(r.weight) : null;
-        await addSet({
-          workoutId: wid,
-          exerciseId: Number(selectedExerciseId),
-          setIndex: currentMax + i + 1,
-          durationSec: total,
-          weightKg: Number.isFinite(weightNum) ? weightNum : null,
-          reps: null,
-        });
-      } else {
-        const repsNum = Number(r.reps);
-        if (!Number.isFinite(repsNum) || repsNum <= 0) continue;
-        const weightNum = r.weight === "" ? null : Number(r.weight);
-        await addSet({
-          workoutId: wid,
-          exerciseId: Number(selectedExerciseId),
-          setIndex: currentMax + i + 1,
-          reps: repsNum,
-          weightKg: Number.isFinite(weightNum) ? weightNum : null,
-          durationSec: null,
-        });
-      }
-    }
-
-    await updatePRForExercise(Number(selectedExerciseId));
-    showToast("Sets added");
-
-    // reset inputs (keep the count)
-    setRows([{ reps: "", weight: "", min: "", sec: "" }]);
-  }
-
-  async function onDeleteSet(id) {
-    const ok = window.confirm("Delete this set?");
-    if (!ok) return;
-    const exerciseId = await deleteSet(id);
-    if (exerciseId) await updatePRForExercise(exerciseId);
-  }
-
-  // UI
   return (
     <div>
       <h2 className="font-semibold">Log Workout</h2>
 
-      {/* DATE AT THE TOP */}
+      {/* Date selector */}
       <div className="mt-3">
         <label className="block text-sm font-medium mb-1">Date</label>
         <input
           type="date"
           className="w-full h-10 border rounded px-3 text-base"
-          value={dateISO}
-          onChange={(e) => setDateISO(e.target.value)}
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
         />
       </div>
 
@@ -696,9 +579,41 @@ function LogTab({ useLiveQuery, showToast }) {
         <label className="block text-sm font-medium mb-1">Load Template</label>
         <select
           className="w-full h-10 border rounded px-3 text-base"
-          onChange={(e) => {
+          onChange={async (e) => {
             const id = Number(e.target.value);
-            if (id) handleLoadTemplate(id);
+            if (!id) return;
+            const data = await getTemplateWithItems(id);
+            if (!data?.items?.length) return alert("This template has no exercises.");
+
+            const wid = await createWorkout(selectedDate);
+            for (const item of data.items) {
+              const count = Math.max(1, item.defaultSets ?? 1);
+              const ex = (exercises ?? []).find((e) => e.id === item.exerciseId);
+              const isTimed = !!ex?.isTimed;
+              const isWeighted = ex?.type === "weighted";
+
+              // find max existing index for this exercise
+              const currentMax =
+                Math.max(
+                  0,
+                  ...((sets ?? [])
+                    .filter((s) => s.exerciseId === item.exerciseId)
+                    .map((s) => s.setIndex || 0))
+                ) || 0;
+
+              for (let i = 0; i < count; i++) {
+                await addSet({
+                  workoutId: wid,
+                  exerciseId: item.exerciseId,
+                  setIndex: currentMax + i + 1,
+                  reps: isTimed ? null : item.defaultReps ?? null,
+                  weightKg: isWeighted ? item.defaultWeightKg ?? null : null,
+                  durationSec: isTimed ? item.defaultDurationSec ?? null : null,
+                });
+              }
+            }
+
+            showToast(`Loaded template: ${data.template.name}`);
             e.target.value = "";
           }}
           defaultValue=""
@@ -712,170 +627,137 @@ function LogTab({ useLiveQuery, showToast }) {
         </select>
       </div>
 
-      {/* Add sets for a chosen exercise */}
-      <div className="mt-4 border rounded p-3">
-        <h3 className="font-semibold">Add sets</h3>
+      {/* Grouped exercises */}
+      <div className="mt-4 space-y-3">
+        {Object.entries(groupedSets).map(([exId, exSets]) => {
+          const exercise = exercises?.find((e) => e.id === Number(exId));
+          if (!exercise) return null;
+          const isTimed = !!exercise.isTimed;
+          const isWeighted = exercise.type === "weighted";
 
-        <div className="mt-2 flex flex-wrap gap-2 items-center">
-          <select
-            className="h-10 border rounded px-3 text-base"
-            value={selectedExerciseId}
-            onChange={(e) => setSelectedExerciseId(e.target.value)}
-          >
-            <option value="">Select Exercise</option>
-            {(exercises ?? []).map((ex) => (
-              <option key={ex.id} value={ex.id}>
-                {ex.name}
-              </option>
-            ))}
-          </select>
+          // summary line
+          const repsList = exSets.map((s) => s.reps).filter((r) => r != null);
+          const durationList = exSets.map((s) => s.durationSec).filter((r) => r != null);
+          const weightList = exSets.map((s) => s.weightKg).filter((r) => r != null);
+          const uniformReps =
+            repsList.length && repsList.every((v) => v === repsList[0]) ? repsList[0] : null;
+          const uniformDur =
+            durationList.length && durationList.every((v) => v === durationList[0])
+              ? durationList[0]
+              : null;
+          const uniformW =
+            weightList.length && weightList.every((v) => v === weightList[0])
+              ? weightList[0]
+              : null;
 
-          {/* how many sets */}
-          <div className="flex items-center gap-2">
-            <button type="button" className="h-10 w-10 border rounded" onClick={() => bumpSets(-1)}>
-              –
-            </button>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className="w-20 h-10 border rounded px-3 text-base text-center"
-              value={numSetsInput}
-              onChange={(e) => onNumSetsTyping(e.target.value)}
-              onBlur={onNumSetsBlur}
-              placeholder="sets"
-            />
-            <button type="button" className="h-10 w-10 border rounded" onClick={() => bumpSets(1)}>
-              +
-            </button>
-            <span className="text-sm text-gray-600">sets</span>
-          </div>
-        </div>
+          const summary =
+            isTimed && uniformDur
+              ? `${exSets.length} sets × ${formatDuration(uniformDur)}`
+              : !isTimed && uniformReps
+              ? `${exSets.length} sets × ${uniformReps} reps`
+              : `${exSets.length} sets`;
 
-        {/* Dynamic rows */}
-        {selectedExercise && (
-          <div className="mt-3 space-y-2">
-            {Array.from({ length: numSets }).map((_, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="w-12 text-sm text-gray-600">Set {i + 1}</span>
+          return (
+            <div key={exId} className="border rounded">
+              <button
+                className="w-full flex justify-between items-center p-2"
+                onClick={() => toggleExpanded(exId)}
+              >
+                <div className="text-left">
+                  <div className="font-medium">{exercise.name}</div>
+                  <div className="text-sm text-gray-600">
+                    {summary}
+                    {isWeighted && uniformW != null ? ` @ ${uniformW} kg` : ""}
+                  </div>
+                </div>
+                <div className="text-gray-500 text-sm">
+                  {expanded[exId] ? "▲" : "▼"}
+                </div>
+              </button>
 
-                {isTimed ? (
-                  <>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="min"
-                      className="w-20 h-10 border rounded px-3 text-base"
-                      value={rows[i]?.min ?? ""}
-                      onChange={(e) => {
-                        const next = [...rows];
-                        next[i] = { ...(next[i] || {}), min: e.target.value };
-                        setRows(next);
-                      }}
-                    />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="sec"
-                      className="w-20 h-10 border rounded px-3 text-base"
-                      value={rows[i]?.sec ?? ""}
-                      onChange={(e) => {
-                        const next = [...rows];
-                        next[i] = { ...(next[i] || {}), sec: e.target.value };
-                        setRows(next);
-                      }}
-                    />
-                    {isWeighted && (
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="weight (kg)"
-                        className="w-32 h-10 border rounded px-3 text-base"
-                        value={rows[i]?.weight ?? ""}
-                        onChange={(e) => {
-                          const next = [...rows];
-                          next[i] = { ...(next[i] || {}), weight: e.target.value };
-                          setRows(next);
-                        }}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="reps"
-                      className="w-24 h-10 border rounded px-3 text-base"
-                      value={rows[i]?.reps ?? ""}
-                      onChange={(e) => {
-                        const next = [...rows];
-                        next[i] = { ...(next[i] || {}), reps: e.target.value };
-                        setRows(next);
-                      }}
-                    />
-                    {isWeighted && (
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="weight (kg)"
-                        className="w-32 h-10 border rounded px-3 text-base"
-                        value={rows[i]?.weight ?? ""}
-                        onChange={(e) => {
-                          const next = [...rows];
-                          next[i] = { ...(next[i] || {}), weight: e.target.value };
-                          setRows(next);
-                        }}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+              {expanded[exId] && (
+                <div className="border-t px-2 pb-2">
+                  <table className="w-full text-sm mt-1">
+                    <thead>
+                      <tr className="text-gray-500">
+                        <th className="text-left w-10">#</th>
+                        {!isTimed && <th>Reps</th>}
+                        {isTimed && <th>Time</th>}
+                        {isWeighted && <th>Weight</th>}
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {exSets
+                        .sort((a, b) => a.setIndex - b.setIndex)
+                        .map((s, idx) => (
+                          <tr key={s.id}>
+                            <td>{idx + 1}</td>
+                            {!isTimed && (
+                              <td>
+                                <input
+                                  type="number"
+                                  className="w-20 border rounded px-1 text-center"
+                                  value={s.reps ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateSet(s.id, "reps", e.target.value)
+                                  }
+                                />
+                              </td>
+                            )}
+                            {isTimed && (
+                              <td>
+                                <input
+                                  type="number"
+                                  className="w-20 border rounded px-1 text-center"
+                                  value={s.durationSec ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateSet(s.id, "durationSec", e.target.value)
+                                  }
+                                />
+                              </td>
+                            )}
+                            {isWeighted && (
+                              <td>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  className="w-20 border rounded px-1 text-center"
+                                  value={s.weightKg ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateSet(s.id, "weightKg", e.target.value)
+                                  }
+                                />
+                              </td>
+                            )}
+                            <td className="text-right">
+                              <button
+                                className="text-xs text-gray-500"
+                                onClick={() => handleDeleteSet(s.id)}
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {(!sets || sets.length === 0) && (
+          <p className="text-gray-500 text-sm text-center">
+            No exercises logged for this date yet.
+          </p>
         )}
-
-        <button
-          className="mt-3 min-h-[44px] px-4 rounded bg-black text-white"
-          onClick={addExerciseSets}
-          disabled={!selectedExercise}
-        >
-          Add to Workout
-        </button>
-      </div>
-
-      {/* Logged sets for this date (inline editable via your existing edit flow if you want) */}
-      <div className="mt-4">
-        <h3 className="font-semibold mb-2">Logged sets</h3>
-        <ul className="space-y-2">
-          {(setsForWorkout ?? []).map((s) => {
-            const ex = exercises?.find((e) => e.id === s.exerciseId);
-            return (
-              <li key={s.id} className="border rounded p-2 text-sm">
-                <div className="flex justify-between items-center">
-                  <div className="font-medium">{ex?.name ?? "Exercise"}</div>
-                  <button className="text-xs text-gray-500" onClick={() => onDeleteSet(s.id)}>
-                    Delete
-                  </button>
-                </div>
-                <div className="text-gray-600">
-                  {s.reps != null ? `${s.reps} reps` : s.durationSec != null ? formatDuration(s.durationSec) : ""}
-                  {s.weightKg != null ? ` @ ${s.weightKg} kg` : ""}
-                </div>
-              </li>
-            );
-          })}
-          {workoutId && (setsForWorkout?.length ?? 0) === 0 && (
-            <p className="text-gray-500 text-sm">No sets added yet.</p>
-          )}
-        </ul>
       </div>
     </div>
   );
 }
+
 
 
 function RowForSet({ s, onDelete, showToast }) {
