@@ -437,10 +437,11 @@ function TemplatesTab({ useLiveQuery }) {
 function LogTab({ useLiveQuery, showToast }) {
   const exercises = useLiveQuery(getExercises, []);
   const templates = useLiveQuery(getTemplates, []);
-  const today = todayISO();
+  const [selectedDate, setSelectedDate] = useState(todayISO());
 
-  const workoutsToday = useLiveQuery(() => getWorkoutsByDate(today), [today]);
-  const workoutId = workoutsToday?.[0]?.id;
+  // workouts + sets for selected day
+  const workouts = useLiveQuery(() => getWorkoutsByDate(selectedDate), [selectedDate]);
+  const workoutId = workouts?.[0]?.id;
   const sets = useLiveQuery(
     () => (workoutId ? getSetsForWorkout(workoutId) : Promise.resolve([])),
     [workoutId]
@@ -451,14 +452,34 @@ function LogTab({ useLiveQuery, showToast }) {
   const [weight, setWeight] = useState("");
   const [duration, setDuration] = useState("");
 
+  // 🔽 Load template into current date
+  async function handleLoadTemplate(templateId) {
+    if (!templateId) return;
+    const data = await getTemplateWithItems(Number(templateId));
+    if (!data?.items?.length) return alert("This template has no exercises.");
+
+    const id = await createWorkout(selectedDate);
+
+    for (const [index, item] of data.items.entries()) {
+      await addSet({
+        workoutId: id,
+        exerciseId: item.exerciseId,
+        setIndex: index + 1,
+        reps: item.defaultReps ?? null,
+        weightKg: item.defaultWeightKg ?? null,
+        durationSec: item.defaultDurationSec ?? null,
+      });
+    }
+    showToast(`Loaded template: ${data.template.name}`);
+  }
+
   async function handleAddSet(e) {
     e.preventDefault();
     if (!selectedExercise) return;
-
     const ex = exercises.find((x) => x.id === Number(selectedExercise));
     if (!ex) return;
 
-    const id = await createWorkout(today);
+    const id = await createWorkout(selectedDate);
     const setIndex = (sets?.filter((s) => s.exerciseId === ex.id).length || 0) + 1;
 
     const setData = {
@@ -473,9 +494,8 @@ function LogTab({ useLiveQuery, showToast }) {
     await addSet(setData);
 
     const { improvements } = await updatePRForExercise(ex.id);
-    if (improvements && Object.keys(improvements).length > 0) {
+    if (improvements && Object.keys(improvements).length > 0)
       showToast(`🎉 New PR in ${ex.name}!`);
-    }
 
     setReps("");
     setWeight("");
@@ -488,27 +508,10 @@ function LogTab({ useLiveQuery, showToast }) {
     if (exId) await updatePRForExercise(exId);
   }
 
-  /* ---- 🧩 Load Template Feature ---- */
-  async function handleLoadTemplate(templateId) {
-    if (!templateId) return;
-    const data = await getTemplateWithItems(Number(templateId));
-    if (!data?.items?.length) return alert("This template has no exercises.");
-
-    const dateISO = today;
-    const id = await createWorkout(dateISO);
-
-    for (const [index, item] of data.items.entries()) {
-      await addSet({
-        workoutId: id,
-        exerciseId: item.exerciseId,
-        setIndex: index + 1,
-        reps: item.defaultReps ?? null,
-        weightKg: item.defaultWeightKg ?? null,
-        durationSec: item.defaultDurationSec ?? null,
-      });
-    }
-
-    showToast(`Loaded template: ${data.template.name}`);
+  async function handleUpdateSet(id, field, value) {
+    const patch = { [field]: value === "" ? null : Number(value) };
+    const exId = await updateSet(id, patch);
+    if (exId) await updatePRForExercise(exId);
   }
 
   /* ---- UI ---- */
@@ -516,7 +519,7 @@ function LogTab({ useLiveQuery, showToast }) {
     <div>
       <h2 className="font-semibold">Log Workout</h2>
 
-      {/* Load Template Dropdown */}
+      {/* Load Template */}
       <div className="mt-3">
         <label className="block text-sm font-medium mb-1">Load Template</label>
         <select
@@ -537,7 +540,18 @@ function LogTab({ useLiveQuery, showToast }) {
         </select>
       </div>
 
-      {/* Add set manually */}
+      {/* Date selector */}
+      <div className="mt-4">
+        <label className="block text-sm font-medium mb-1">Date</label>
+        <input
+          type="date"
+          className="w-full h-10 border rounded px-3 text-base"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+        />
+      </div>
+
+      {/* Add new set manually */}
       <form onSubmit={handleAddSet} className="mt-4 grid grid-cols-1 gap-2">
         <select
           className="h-10 border rounded px-3 text-base"
@@ -607,16 +621,40 @@ function LogTab({ useLiveQuery, showToast }) {
                   Delete
                 </button>
               </div>
-              <div className="text-sm text-gray-600 mt-1">
-                {s.reps != null && <span>{s.reps} reps</span>}
-                {s.durationSec != null && (
-                  <span> {formatDuration(s.durationSec)}</span>
+
+              <div className="grid grid-cols-3 gap-1 text-sm mt-1">
+                {!ex?.isTimed && (
+                  <input
+                    type="number"
+                    className="border rounded px-2 py-1 text-center"
+                    value={s.reps ?? ""}
+                    placeholder="Reps"
+                    onChange={(e) =>
+                      handleUpdateSet(s.id, "reps", e.target.value)
+                    }
+                  />
                 )}
-                {s.weightKg != null && (
-                  <span>
-                    {" "}
-                    @ {s.weightKg} kg
-                  </span>
+                {ex?.isTimed && (
+                  <input
+                    type="number"
+                    className="border rounded px-2 py-1 text-center"
+                    value={s.durationSec ?? ""}
+                    placeholder="Duration (sec)"
+                    onChange={(e) =>
+                      handleUpdateSet(s.id, "durationSec", e.target.value)
+                    }
+                  />
+                )}
+                {ex?.type === "weighted" && (
+                  <input
+                    type="number"
+                    className="border rounded px-2 py-1 text-center"
+                    value={s.weightKg ?? ""}
+                    placeholder="Weight"
+                    onChange={(e) =>
+                      handleUpdateSet(s.id, "weightKg", e.target.value)
+                    }
+                  />
                 )}
               </div>
             </li>
@@ -624,13 +662,14 @@ function LogTab({ useLiveQuery, showToast }) {
         })}
         {sets?.length === 0 && (
           <p className="text-gray-500 text-sm mt-2">
-            No sets logged today yet.
+            No sets logged for this day yet.
           </p>
         )}
       </ul>
     </div>
   );
 }
+
 
 function RowForSet({ s, onDelete, showToast }) {
   const [exercise, setExercise] = useState(null);
