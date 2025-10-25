@@ -3,16 +3,17 @@ import Dexie from "dexie";
 
 export const db = new Dexie("workout-tracker");
 
-// bump to v3 — add templates + templateItems
-db.version(3).stores({
+// bump to v4 — adds defaultSets to templateItems
+db.version(4).stores({
   exercises: "++id, name, type, createdAt",
   workouts: "++id, dateISO, notes",
   sets: "++id, workoutId, exerciseId, setIndex, reps, weightKg, durationSec",
   prs: "exerciseId",
   templates: "++id, name, createdAt",
   templateItems:
-    "++id, templateId, exerciseId, order, defaultReps, defaultDurationSec, defaultWeightKg",
+    "++id, templateId, exerciseId, order, defaultSets, defaultReps, defaultDurationSec, defaultWeightKg",
 });
+
 
 /* ---------------- Exercises ---------------- */
 export async function addExercise({ name, type = "weighted", isTimed = false }) {

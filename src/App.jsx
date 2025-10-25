@@ -1,6 +1,4 @@
-window.onerror = (msg, src, line, col, err) => {
-  alert("Error: " + msg);
-};
+
 
 // src/App.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +28,7 @@ import {
   deleteTemplate,
   addTemplateItem,
   deleteTemplateItem,
+  updateTemplateItem,
 } from "./db";
 import { liveQuery } from "dexie";
 import {
@@ -310,6 +309,8 @@ function ExercisesTab({ useLiveQuery }) {
 }
 
 /* ---------- Templates Tab ---------- */
+{/* list exercises in template (editable defaults) */}
+/* ---------- Templates Tab ---------- */
 function TemplatesTab({ useLiveQuery }) {
   const templates = useLiveQuery(getTemplates, []);
   const exercises = useLiveQuery(getExercises, []);
@@ -336,17 +337,15 @@ function TemplatesTab({ useLiveQuery }) {
   }
 
   const currentTemplate = useLiveQuery(
-    () =>
-      selectedTemplate
-        ? getTemplateWithItems(selectedTemplate)
-        : Promise.resolve(null),
+    () => (selectedTemplate ? getTemplateWithItems(selectedTemplate) : Promise.resolve(null)),
     [selectedTemplate]
   );
 
   return (
-    <div>
+    <div className="overflow-x-hidden">
       <h2 className="font-semibold">Workout Templates</h2>
 
+      {/* Create template */}
       <form onSubmit={handleAddTemplate} className="mt-3 flex gap-2">
         <input
           className="flex-1 h-10 border rounded px-3"
@@ -357,13 +356,12 @@ function TemplatesTab({ useLiveQuery }) {
         <button className="bg-black text-white px-4 rounded">Add</button>
       </form>
 
+      {/* List templates */}
       <ul className="mt-4 space-y-2">
         {(templates ?? []).map((t) => (
           <li
             key={t.id}
-            className={`border rounded p-2 ${
-              selectedTemplate === t.id ? "bg-gray-50" : ""
-            }`}
+            className={`border rounded p-2 ${selectedTemplate === t.id ? "bg-gray-50" : ""}`}
             onClick={() => setSelectedTemplate(t.id)}
           >
             <div className="flex justify-between items-center">
@@ -380,46 +378,132 @@ function TemplatesTab({ useLiveQuery }) {
             </div>
           </li>
         ))}
+        {templates?.length === 0 && (
+          <p className="text-gray-500 text-sm">No templates yet — create one above.</p>
+        )}
       </ul>
 
+      {/* Template detail */}
       {currentTemplate?.template && (
         <div className="mt-4 border-t pt-3">
-          <h3 className="font-semibold">
-            {currentTemplate.template.name} Exercises
-          </h3>
+          <h3 className="font-semibold">{currentTemplate.template.name} Exercises</h3>
 
-          <select
-            className="mt-2 h-10 border rounded px-3 w-full"
-            onChange={(e) => {
-              const exId = Number(e.target.value);
-              if (exId) handleAddExerciseToTemplate(exId);
-              e.target.value = "";
-            }}
-            defaultValue=""
-          >
-            <option value="">Add Exercise...</option>
-            {(exercises ?? []).map((ex) => (
-              <option key={ex.id} value={ex.id}>
-                {ex.name}
-              </option>
-            ))}
-          </select>
+          {/* Add exercise selector */}
+          <div className="mt-2">
+            <select
+              className="w-full h-10 border rounded px-3"
+              onChange={(e) => {
+                const exId = Number(e.target.value);
+                if (exId) handleAddExerciseToTemplate(exId);
+                e.target.value = "";
+              }}
+              defaultValue=""
+            >
+              <option value="">Add Exercise...</option>
+              {(exercises ?? []).map((ex) => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <ul className="mt-3 space-y-1">
+          {/* Editable defaults for each exercise in the template */}
+          <ul className="mt-3 space-y-2">
             {(currentTemplate.items ?? []).map((it) => {
               const ex = exercises?.find((e) => e.id === it.exerciseId);
+              const isTimed = !!ex?.isTimed;
+              const isWeighted = ex?.type === "weighted";
               return (
-                <li
-                  key={it.id}
-                  className="flex justify-between items-center border rounded px-2 py-1 text-sm"
-                >
-                  <span>{ex?.name ?? "Unknown Exercise"}</span>
-                  <button
-                    className="text-xs text-gray-500"
-                    onClick={() => deleteTemplateItem(it.id)}
-                  >
-                    Remove
-                  </button>
+                <li key={it.id} className="border rounded p-2 text-sm">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium break-words">{ex?.name ?? "Unknown Exercise"}</div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                          {ex?.type}{isTimed ? " · timed" : ""}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      className="text-xs text-gray-500 shrink-0"
+                      onClick={() => deleteTemplateItem(it.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  {/* defaults editor */}
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-gray-600">Sets</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        className="w-full h-9 border rounded px-2"
+                        value={it.defaultSets ?? 1}
+                        onChange={(e) =>
+                          updateTemplateItem(it.id, {
+                            defaultSets: Math.max(1, Math.min(20, Number(e.target.value) || 1)),
+                          })
+                        }
+                      />
+                    </div>
+
+                    {!isTimed && (
+                      <div>
+                        <label className="block text-[11px] text-gray-600">Reps</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={200}
+                          className="w-full h-9 border rounded px-2"
+                          value={it.defaultReps ?? ""}
+                          onChange={(e) =>
+                            updateTemplateItem(it.id, {
+                              defaultReps: e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {isTimed && (
+                      <div>
+                        <label className="block text-[11px] text-gray-600">Duration (sec)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={3600}
+                          className="w-full h-9 border rounded px-2"
+                          value={it.defaultDurationSec ?? ""}
+                          onChange={(e) =>
+                            updateTemplateItem(it.id, {
+                              defaultDurationSec: e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {isWeighted && (
+                      <div>
+                        <label className="block text-[11px] text-gray-600">Weight (kg)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          className="w-full h-9 border rounded px-2"
+                          value={it.defaultWeightKg ?? ""}
+                          onChange={(e) =>
+                            updateTemplateItem(it.id, {
+                              defaultWeightKg: e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
                 </li>
               );
             })}
@@ -433,91 +517,179 @@ function TemplatesTab({ useLiveQuery }) {
   );
 }
 
-/* ---------- Log Tab ---------- */
+
+/* ---------- Log Tab (restored + sets count + template defaults) ---------- */
 function LogTab({ useLiveQuery, showToast }) {
+  // DATE FIRST (top)
+  const [dateISO, setDateISO] = useState(todayISO());
+
+  const workoutsForDay = useLiveQuery(() => getWorkoutsByDate(dateISO), [dateISO]);
+  const [workoutId, setWorkoutId] = useState(null);
+  useEffect(() => {
+    setWorkoutId(workoutsForDay?.[0]?.id ?? null);
+  }, [workoutsForDay]);
+
   const exercises = useLiveQuery(getExercises, []);
   const templates = useLiveQuery(getTemplates, []);
-  const [selectedDate, setSelectedDate] = useState(todayISO());
-
-  // workouts + sets for selected day
-  const workouts = useLiveQuery(() => getWorkoutsByDate(selectedDate), [selectedDate]);
-  const workoutId = workouts?.[0]?.id;
-  const sets = useLiveQuery(
+  const setsForWorkout = useLiveQuery(
     () => (workoutId ? getSetsForWorkout(workoutId) : Promise.resolve([])),
     [workoutId]
   );
 
-  const [selectedExercise, setSelectedExercise] = useState("");
-  const [reps, setReps] = useState("");
-  const [weight, setWeight] = useState("");
-  const [duration, setDuration] = useState("");
+  const [selectedExerciseId, setSelectedExerciseId] = useState("");
+  const selectedExercise = (exercises ?? []).find(
+    (e) => String(e.id) === String(selectedExerciseId)
+  );
+  const isTimed = !!selectedExercise?.isTimed;
+  const isWeighted = selectedExercise?.type === "weighted";
 
-  // 🔽 Load template into current date
+  // how many sets UI
+  const [numSetsInput, setNumSetsInput] = useState("3");
+  const [numSets, setNumSets] = useState(3);
+  const [rows, setRows] = useState([{ reps: "", weight: "", min: "", sec: "" }]);
+
+  function syncRows(count) {
+    const c = Math.max(1, Math.min(count, 20));
+    setNumSets(c);
+    setRows((prev) => {
+      const next = Array.from({ length: c }, (_, i) => prev[i] ?? { reps: "", weight: "", min: "", sec: "" });
+      return next;
+    });
+  }
+  function onNumSetsTyping(v) {
+    if (!/^\d{0,2}$/.test(v)) return;
+    setNumSetsInput(v);
+  }
+  function onNumSetsBlur() {
+    const parsed = parseInt(numSetsInput, 10);
+    const safe = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
+    setNumSetsInput(String(safe));
+    syncRows(safe);
+  }
+  function bumpSets(delta) {
+    const base = parseInt(numSetsInput || "0", 10);
+    const next = Number.isFinite(base) ? Math.max(1, Math.min(base + delta, 20)) : 1;
+    setNumSetsInput(String(next));
+    syncRows(next);
+  }
+
+  async function ensureWorkout() {
+    if (workoutId) return workoutId;
+    const id = await createWorkout(dateISO);
+    setWorkoutId(id);
+    return id;
+  }
+
+  // Load template: create defaultSets sets for each exercise with defaults
   async function handleLoadTemplate(templateId) {
     if (!templateId) return;
     const data = await getTemplateWithItems(Number(templateId));
     if (!data?.items?.length) return alert("This template has no exercises.");
+    const wid = await ensureWorkout();
 
-    const id = await createWorkout(selectedDate);
+    for (const item of data.items) {
+      const ex = (exercises ?? []).find((e) => e.id === item.exerciseId);
+      const isTimedX = !!ex?.isTimed;
+      const isWeightedX = ex?.type === "weighted";
+      const count = Math.max(1, item.defaultSets ?? 1);
 
-    for (const [index, item] of data.items.entries()) {
-      await addSet({
-        workoutId: id,
-        exerciseId: item.exerciseId,
-        setIndex: index + 1,
-        reps: item.defaultReps ?? null,
-        weightKg: item.defaultWeightKg ?? null,
-        durationSec: item.defaultDurationSec ?? null,
-      });
+      // find current max index for this exercise to continue numbering
+      const currentMax =
+        Math.max(
+          0,
+          ...((setsForWorkout ?? [])
+            .filter((s) => s.exerciseId === item.exerciseId)
+            .map((s) => s.setIndex || 0))
+        ) || 0;
+
+      for (let i = 0; i < count; i++) {
+        await addSet({
+          workoutId: wid,
+          exerciseId: item.exerciseId,
+          setIndex: currentMax + i + 1,
+          reps: isTimedX ? null : (item.defaultReps ?? null),
+          weightKg: isWeightedX ? (item.defaultWeightKg ?? null) : null,
+          durationSec: isTimedX ? (item.defaultDurationSec ?? null) : null,
+        });
+      }
     }
+
     showToast(`Loaded template: ${data.template.name}`);
   }
 
-  async function handleAddSet(e) {
-    e.preventDefault();
-    if (!selectedExercise) return;
-    const ex = exercises.find((x) => x.id === Number(selectedExercise));
-    if (!ex) return;
+  async function addExerciseSets() {
+    if (!selectedExerciseId) return;
+    const wid = await ensureWorkout();
 
-    const id = await createWorkout(selectedDate);
-    const setIndex = (sets?.filter((s) => s.exerciseId === ex.id).length || 0) + 1;
+    // find current max setIndex for this exercise
+    const currentMax =
+      Math.max(
+        0,
+        ...((setsForWorkout ?? [])
+          .filter((s) => s.exerciseId === Number(selectedExerciseId))
+          .map((s) => s.setIndex || 0))
+      ) || 0;
 
-    const setData = {
-      workoutId: id,
-      exerciseId: ex.id,
-      setIndex,
-      reps: ex.isTimed ? null : Number(reps) || null,
-      weightKg: ex.type === "weighted" ? Number(weight) || null : null,
-      durationSec: ex.isTimed ? Number(duration) || null : null,
-    };
+    for (let i = 0; i < numSets; i++) {
+      const r = rows[i] || {};
+      if (isTimed) {
+        const m = Number(r.min || 0);
+        const s = Number(r.sec || 0);
+        const total = Math.round((m >= 0 ? m : 0) * 60 + (s >= 0 ? s : 0));
+        if (!Number.isFinite(total) || total <= 0) continue;
+        const weightNum = isWeighted && r.weight !== "" ? Number(r.weight) : null;
+        await addSet({
+          workoutId: wid,
+          exerciseId: Number(selectedExerciseId),
+          setIndex: currentMax + i + 1,
+          durationSec: total,
+          weightKg: Number.isFinite(weightNum) ? weightNum : null,
+          reps: null,
+        });
+      } else {
+        const repsNum = Number(r.reps);
+        if (!Number.isFinite(repsNum) || repsNum <= 0) continue;
+        const weightNum = r.weight === "" ? null : Number(r.weight);
+        await addSet({
+          workoutId: wid,
+          exerciseId: Number(selectedExerciseId),
+          setIndex: currentMax + i + 1,
+          reps: repsNum,
+          weightKg: Number.isFinite(weightNum) ? weightNum : null,
+          durationSec: null,
+        });
+      }
+    }
 
-    await addSet(setData);
+    await updatePRForExercise(Number(selectedExerciseId));
+    showToast("Sets added");
 
-    const { improvements } = await updatePRForExercise(ex.id);
-    if (improvements && Object.keys(improvements).length > 0)
-      showToast(`🎉 New PR in ${ex.name}!`);
-
-    setReps("");
-    setWeight("");
-    setDuration("");
+    // reset inputs (keep the count)
+    setRows([{ reps: "", weight: "", min: "", sec: "" }]);
   }
 
-  async function handleDeleteSet(id) {
-    if (!window.confirm("Delete this set?")) return;
-    const exId = await deleteSet(id);
-    if (exId) await updatePRForExercise(exId);
+  async function onDeleteSet(id) {
+    const ok = window.confirm("Delete this set?");
+    if (!ok) return;
+    const exerciseId = await deleteSet(id);
+    if (exerciseId) await updatePRForExercise(exerciseId);
   }
 
-  async function handleUpdateSet(id, field, value) {
-    const patch = { [field]: value === "" ? null : Number(value) };
-    const exId = await updateSet(id, patch);
-    if (exId) await updatePRForExercise(exId);
-  }
-
-  /* ---- UI ---- */
+  // UI
   return (
     <div>
       <h2 className="font-semibold">Log Workout</h2>
+
+      {/* DATE AT THE TOP */}
+      <div className="mt-3">
+        <label className="block text-sm font-medium mb-1">Date</label>
+        <input
+          type="date"
+          className="w-full h-10 border rounded px-3 text-base"
+          value={dateISO}
+          onChange={(e) => setDateISO(e.target.value)}
+        />
+      </div>
 
       {/* Load Template */}
       <div className="mt-3">
@@ -540,132 +712,167 @@ function LogTab({ useLiveQuery, showToast }) {
         </select>
       </div>
 
-      {/* Date selector */}
-      <div className="mt-4">
-        <label className="block text-sm font-medium mb-1">Date</label>
-        <input
-          type="date"
-          className="w-full h-10 border rounded px-3 text-base"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-        />
+      {/* Add sets for a chosen exercise */}
+      <div className="mt-4 border rounded p-3">
+        <h3 className="font-semibold">Add sets</h3>
+
+        <div className="mt-2 flex flex-wrap gap-2 items-center">
+          <select
+            className="h-10 border rounded px-3 text-base"
+            value={selectedExerciseId}
+            onChange={(e) => setSelectedExerciseId(e.target.value)}
+          >
+            <option value="">Select Exercise</option>
+            {(exercises ?? []).map((ex) => (
+              <option key={ex.id} value={ex.id}>
+                {ex.name}
+              </option>
+            ))}
+          </select>
+
+          {/* how many sets */}
+          <div className="flex items-center gap-2">
+            <button type="button" className="h-10 w-10 border rounded" onClick={() => bumpSets(-1)}>
+              –
+            </button>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="w-20 h-10 border rounded px-3 text-base text-center"
+              value={numSetsInput}
+              onChange={(e) => onNumSetsTyping(e.target.value)}
+              onBlur={onNumSetsBlur}
+              placeholder="sets"
+            />
+            <button type="button" className="h-10 w-10 border rounded" onClick={() => bumpSets(1)}>
+              +
+            </button>
+            <span className="text-sm text-gray-600">sets</span>
+          </div>
+        </div>
+
+        {/* Dynamic rows */}
+        {selectedExercise && (
+          <div className="mt-3 space-y-2">
+            {Array.from({ length: numSets }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="w-12 text-sm text-gray-600">Set {i + 1}</span>
+
+                {isTimed ? (
+                  <>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="min"
+                      className="w-20 h-10 border rounded px-3 text-base"
+                      value={rows[i]?.min ?? ""}
+                      onChange={(e) => {
+                        const next = [...rows];
+                        next[i] = { ...(next[i] || {}), min: e.target.value };
+                        setRows(next);
+                      }}
+                    />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="sec"
+                      className="w-20 h-10 border rounded px-3 text-base"
+                      value={rows[i]?.sec ?? ""}
+                      onChange={(e) => {
+                        const next = [...rows];
+                        next[i] = { ...(next[i] || {}), sec: e.target.value };
+                        setRows(next);
+                      }}
+                    />
+                    {isWeighted && (
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="weight (kg)"
+                        className="w-32 h-10 border rounded px-3 text-base"
+                        value={rows[i]?.weight ?? ""}
+                        onChange={(e) => {
+                          const next = [...rows];
+                          next[i] = { ...(next[i] || {}), weight: e.target.value };
+                          setRows(next);
+                        }}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="reps"
+                      className="w-24 h-10 border rounded px-3 text-base"
+                      value={rows[i]?.reps ?? ""}
+                      onChange={(e) => {
+                        const next = [...rows];
+                        next[i] = { ...(next[i] || {}), reps: e.target.value };
+                        setRows(next);
+                      }}
+                    />
+                    {isWeighted && (
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="weight (kg)"
+                        className="w-32 h-10 border rounded px-3 text-base"
+                        value={rows[i]?.weight ?? ""}
+                        onChange={(e) => {
+                          const next = [...rows];
+                          next[i] = { ...(next[i] || {}), weight: e.target.value };
+                          setRows(next);
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          className="mt-3 min-h-[44px] px-4 rounded bg-black text-white"
+          onClick={addExerciseSets}
+          disabled={!selectedExercise}
+        >
+          Add to Workout
+        </button>
       </div>
 
-      {/* Add new set manually */}
-      <form onSubmit={handleAddSet} className="mt-4 grid grid-cols-1 gap-2">
-        <select
-          className="h-10 border rounded px-3 text-base"
-          value={selectedExercise}
-          onChange={(e) => setSelectedExercise(e.target.value)}
-        >
-          <option value="">Select Exercise</option>
-          {(exercises ?? []).map((ex) => (
-            <option key={ex.id} value={ex.id}>
-              {ex.name}
-            </option>
-          ))}
-        </select>
-
-        {selectedExercise && (() => {
-          const ex = exercises.find((x) => x.id === Number(selectedExercise));
-          return ex ? (
-            <>
-              {!ex.isTimed && (
-                <input
-                  className="h-10 border rounded px-3 text-base"
-                  placeholder="Reps"
-                  type="number"
-                  value={reps}
-                  onChange={(e) => setReps(e.target.value)}
-                />
-              )}
-              {ex.isTimed && (
-                <input
-                  className="h-10 border rounded px-3 text-base"
-                  placeholder="Duration (sec)"
-                  type="number"
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                />
-              )}
-              {ex.type === "weighted" && (
-                <input
-                  className="h-10 border rounded px-3 text-base"
-                  placeholder="Weight (kg)"
-                  type="number"
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                />
-              )}
-              <button className="min-h-[44px] px-4 rounded bg-black text-white">
-                Add Set
-              </button>
-            </>
-          ) : null;
-        })()}
-      </form>
-
-      {/* Logged sets */}
-      <ul className="mt-4 space-y-2">
-        {(sets ?? []).map((s) => {
-          const ex = exercises?.find((e) => e.id === s.exerciseId);
-          const exName = ex?.name || "Unknown Exercise";
-          return (
-            <li key={s.id} className="border rounded p-2">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">{exName}</span>
-                <button
-                  className="text-xs text-gray-500"
-                  onClick={() => handleDeleteSet(s.id)}
-                >
-                  Delete
-                </button>
-              </div>
-
-              <div className="grid grid-cols-3 gap-1 text-sm mt-1">
-                {!ex?.isTimed && (
-                  <input
-                    type="number"
-                    className="border rounded px-2 py-1 text-center"
-                    value={s.reps ?? ""}
-                    placeholder="Reps"
-                    onChange={(e) =>
-                      handleUpdateSet(s.id, "reps", e.target.value)
-                    }
-                  />
-                )}
-                {ex?.isTimed && (
-                  <input
-                    type="number"
-                    className="border rounded px-2 py-1 text-center"
-                    value={s.durationSec ?? ""}
-                    placeholder="Duration (sec)"
-                    onChange={(e) =>
-                      handleUpdateSet(s.id, "durationSec", e.target.value)
-                    }
-                  />
-                )}
-                {ex?.type === "weighted" && (
-                  <input
-                    type="number"
-                    className="border rounded px-2 py-1 text-center"
-                    value={s.weightKg ?? ""}
-                    placeholder="Weight"
-                    onChange={(e) =>
-                      handleUpdateSet(s.id, "weightKg", e.target.value)
-                    }
-                  />
-                )}
-              </div>
-            </li>
-          );
-        })}
-        {sets?.length === 0 && (
-          <p className="text-gray-500 text-sm mt-2">
-            No sets logged for this day yet.
-          </p>
-        )}
-      </ul>
+      {/* Logged sets for this date (inline editable via your existing edit flow if you want) */}
+      <div className="mt-4">
+        <h3 className="font-semibold mb-2">Logged sets</h3>
+        <ul className="space-y-2">
+          {(setsForWorkout ?? []).map((s) => {
+            const ex = exercises?.find((e) => e.id === s.exerciseId);
+            return (
+              <li key={s.id} className="border rounded p-2 text-sm">
+                <div className="flex justify-between items-center">
+                  <div className="font-medium">{ex?.name ?? "Exercise"}</div>
+                  <button className="text-xs text-gray-500" onClick={() => onDeleteSet(s.id)}>
+                    Delete
+                  </button>
+                </div>
+                <div className="text-gray-600">
+                  {s.reps != null ? `${s.reps} reps` : s.durationSec != null ? formatDuration(s.durationSec) : ""}
+                  {s.weightKg != null ? ` @ ${s.weightKg} kg` : ""}
+                </div>
+              </li>
+            );
+          })}
+          {workoutId && (setsForWorkout?.length ?? 0) === 0 && (
+            <p className="text-gray-500 text-sm">No sets added yet.</p>
+          )}
+        </ul>
+      </div>
     </div>
   );
 }
