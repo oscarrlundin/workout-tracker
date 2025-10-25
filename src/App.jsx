@@ -518,7 +518,7 @@ function TemplatesTab({ useLiveQuery }) {
 }
 
 
-/* ---------- Log Tab (Phase B: add/delete sets + polish) ---------- */
+//* ---------- Log Tab (Phase C Lite: summary + clean layout, no animation) ---------- */
 function LogTab({ useLiveQuery, showToast }) {
   const exercises = useLiveQuery(getExercises, []);
   const templates = useLiveQuery(getTemplates, []);
@@ -532,18 +532,9 @@ function LogTab({ useLiveQuery, showToast }) {
   );
 
   const [expanded, setExpanded] = useState({});
-  const containerRef = useRef(null);
 
   function toggleExpanded(exId) {
-    setExpanded((prev) => {
-      const next = { ...prev, [exId]: !prev[exId] };
-      // scroll to exercise when expanding
-      setTimeout(() => {
-        const el = document.getElementById(`exercise-${exId}`);
-        if (el && next[exId]) el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 100);
-      return next;
-    });
+    setExpanded((prev) => ({ ...prev, [exId]: !prev[exId] }));
   }
 
   async function handleUpdateSet(id, field, value) {
@@ -563,17 +554,15 @@ function LogTab({ useLiveQuery, showToast }) {
     const del = (sets ?? []).filter((s) => s.exerciseId === exId);
     for (const s of del) await deleteSet(s.id);
     await updatePRForExercise(exId);
-    showToast("Exercise removed from workout");
+    showToast("Exercise removed");
   }
 
   async function handleAddSet(exId) {
     const exercise = exercises?.find((e) => e.id === Number(exId));
     if (!exercise) return;
     const wid = workoutId || (await createWorkout(selectedDate));
-
     const isTimed = !!exercise.isTimed;
     const isWeighted = exercise.type === "weighted";
-
     const currentMax =
       Math.max(
         0,
@@ -581,7 +570,6 @@ function LogTab({ useLiveQuery, showToast }) {
           .filter((s) => s.exerciseId === Number(exId))
           .map((s) => s.setIndex || 0))
       ) || 0;
-
     await addSet({
       workoutId: wid,
       exerciseId: Number(exId),
@@ -590,9 +578,10 @@ function LogTab({ useLiveQuery, showToast }) {
       durationSec: isTimed ? 0 : null,
       weightKg: isWeighted ? null : null,
     });
+    showToast("Set added");
   }
 
-  // helper for grouped sets by exercise
+  // Group sets by exercise
   const groupedSets = useMemo(() => {
     const grouped = {};
     (sets ?? []).forEach((s) => {
@@ -603,7 +592,7 @@ function LogTab({ useLiveQuery, showToast }) {
   }, [sets]);
 
   return (
-    <div ref={containerRef}>
+    <div>
       <h2 className="font-semibold">Log Workout</h2>
 
       {/* Date selector */}
@@ -634,7 +623,6 @@ function LogTab({ useLiveQuery, showToast }) {
               const ex = (exercises ?? []).find((e) => e.id === item.exerciseId);
               const isTimed = !!ex?.isTimed;
               const isWeighted = ex?.type === "weighted";
-
               const currentMax =
                 Math.max(
                   0,
@@ -654,7 +642,6 @@ function LogTab({ useLiveQuery, showToast }) {
                 });
               }
             }
-
             showToast(`Loaded template: ${data.template.name}`);
             e.target.value = "";
           }}
@@ -669,7 +656,7 @@ function LogTab({ useLiveQuery, showToast }) {
         </select>
       </div>
 
-      {/* Grouped exercises */}
+      {/* Exercises grouped */}
       <div className="mt-4 space-y-3">
         {Object.entries(groupedSets).map(([exId, exSets]) => {
           const exercise = exercises?.find((e) => e.id === Number(exId));
@@ -677,58 +664,52 @@ function LogTab({ useLiveQuery, showToast }) {
           const isTimed = !!exercise.isTimed;
           const isWeighted = exercise.type === "weighted";
 
+          // Summary
           const repsList = exSets.map((s) => s.reps).filter((r) => r != null);
-          const durationList = exSets.map((s) => s.durationSec).filter((r) => r != null);
-          const weightList = exSets.map((s) => s.weightKg).filter((r) => r != null);
+          const durList = exSets.map((s) => s.durationSec).filter((r) => r != null);
+          const wList = exSets.map((s) => s.weightKg).filter((r) => r != null);
+
           const uniformReps =
             repsList.length && repsList.every((v) => v === repsList[0]) ? repsList[0] : null;
           const uniformDur =
-            durationList.length && durationList.every((v) => v === durationList[0])
-              ? durationList[0]
-              : null;
+            durList.length && durList.every((v) => v === durList[0]) ? durList[0] : null;
           const uniformW =
-            weightList.length && weightList.every((v) => v === weightList[0])
-              ? weightList[0]
-              : null;
+            wList.length && wList.every((v) => v === wList[0]) ? wList[0] : null;
 
           const summary =
             isTimed && uniformDur
-              ? `${exSets.length} sets × ${formatDuration(uniformDur)}`
+              ? `${exSets.length} × ${formatDuration(uniformDur)}`
               : !isTimed && uniformReps
-              ? `${exSets.length} sets × ${uniformReps} reps`
+              ? `${exSets.length} × ${uniformReps}`
               : `${exSets.length} sets`;
+          const suffix = isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
 
           return (
-            <div key={exId} id={`exercise-${exId}`} className="border rounded overflow-hidden">
-              <div
-                className={`flex justify-between items-center p-3 ${
-                  expanded[exId] ? "bg-gray-50" : "bg-white"
-                }`}
-              >
+            <div key={exId} className="border rounded">
+              <div className="flex justify-between items-center p-3 bg-gray-50">
                 <div onClick={() => toggleExpanded(exId)} className="flex-1 text-left">
                   <div className="font-medium">{exercise.name}</div>
                   <div className="text-sm text-gray-600">
                     {summary}
-                    {isWeighted && uniformW != null ? ` @ ${uniformW} kg` : ""}
+                    {suffix}
                   </div>
                 </div>
-
                 <div className="flex gap-2 items-center">
                   <button
                     onClick={() => handleAddSet(exId)}
-                    className="text-xs text-gray-500 border rounded px-2 py-1"
+                    className="text-xs border rounded px-2 py-1"
                   >
                     + Set
                   </button>
                   <button
                     onClick={() => handleDeleteExercise(Number(exId))}
-                    className="text-xs text-gray-500 border rounded px-2 py-1"
+                    className="text-xs border rounded px-2 py-1"
                   >
                     🗑
                   </button>
                   <button
                     onClick={() => toggleExpanded(exId)}
-                    className="text-gray-500 text-sm w-6 text-center"
+                    className="text-gray-600 text-sm w-6 text-center"
                   >
                     {expanded[exId] ? "▲" : "▼"}
                   </button>
@@ -736,7 +717,7 @@ function LogTab({ useLiveQuery, showToast }) {
               </div>
 
               {expanded[exId] && (
-                <div className="border-t px-3 pb-3 bg-white">
+                <div className="border-t px-3 pb-3">
                   <table className="w-full text-sm mt-2">
                     <thead>
                       <tr className="text-gray-500 border-b">
@@ -792,7 +773,7 @@ function LogTab({ useLiveQuery, showToast }) {
                             )}
                             <td className="text-right">
                               <button
-                                className="text-xs text-gray-400"
+                                className="text-xs text-gray-500"
                                 onClick={() => handleDeleteSet(s.id)}
                               >
                                 ✕
@@ -817,6 +798,7 @@ function LogTab({ useLiveQuery, showToast }) {
     </div>
   );
 }
+
 
 
 
