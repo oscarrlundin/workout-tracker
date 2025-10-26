@@ -14,7 +14,6 @@ db.version(4).stores({
     "++id, templateId, exerciseId, order, defaultSets, defaultReps, defaultDurationSec, defaultWeightKg",
 });
 
-
 /* ---------------- Exercises ---------------- */
 export async function addExercise({ name, type = "weighted", isTimed = false }) {
   const clean = String(name || "").trim();
@@ -22,7 +21,12 @@ export async function addExercise({ name, type = "weighted", isTimed = false }) 
   if (!["weighted", "bodyweight"].includes(type))
     throw new Error("Invalid exercise type");
   const now = new Date().toISOString();
-  return db.exercises.add({ name: clean, type, isTimed: !!isTimed, createdAt: now });
+  return db.exercises.add({
+    name: clean,
+    type,
+    isTimed: !!isTimed,
+    createdAt: now,
+  });
 }
 
 export async function getExercises() {
@@ -59,9 +63,20 @@ export async function createWorkout(dateISO, notes = "") {
   if (existing) return existing.id;
   return db.workouts.add({ dateISO: cleanDate, notes });
 }
+
 export async function getWorkoutsByDate(dateISO) {
   const d = String(dateISO || "").slice(0, 10);
   return db.workouts.where("dateISO").equals(d).toArray();
+}
+
+// NEW: single workout for date + generic metadata update
+export async function getWorkoutByDate(dateISO) {
+  const d = String(dateISO || "").slice(0, 10);
+  return db.workouts.where("dateISO").equals(d).first();
+}
+
+export async function updateWorkoutMeta(id, patch) {
+  return db.workouts.update(id, patch);
 }
 
 /* ---------------- Utils ---------------- */
@@ -91,19 +106,23 @@ export async function addSet({
     durationSec: typeof durationSec === "number" ? durationSec : null,
   });
 }
+
 export async function updateSet(id, patch) {
   const existing = await db.sets.get(id);
   await db.sets.update(id, patch);
   return existing?.exerciseId ?? null;
 }
+
 export async function deleteSet(id) {
   const existing = await db.sets.get(id);
   await db.sets.delete(id);
   return existing?.exerciseId ?? null;
 }
+
 export async function getSetsForWorkout(workoutId) {
   return db.sets.where("workoutId").equals(workoutId).sortBy("setIndex");
 }
+
 export async function getSetsForExercise(exerciseId) {
   return db.sets.where("exerciseId").equals(exerciseId).toArray();
 }
@@ -119,9 +138,13 @@ export async function updatePRForExercise(exerciseId) {
 
   const bestWeight = Math.max(0, ...sets.map((s) => s.weightKg || 0)) || null;
   const bestReps = Math.max(0, ...sets.map((s) => s.reps || 0)) || null;
-  const bestDurationSec = Math.max(0, ...sets.map((s) => s.durationSec || 0)) || null;
+  const bestDurationSec =
+    Math.max(0, ...sets.map((s) => s.durationSec || 0)) || null;
   const best1RM =
-    Math.max(0, ...sets.map((s) => epley1RM(s.weightKg || 0, s.reps || 0))) || null;
+    Math.max(
+      0,
+      ...sets.map((s) => epley1RM(s.weightKg || 0, s.reps || 0))
+    ) || null;
 
   const next = {
     exerciseId,
@@ -134,9 +157,11 @@ export async function updatePRForExercise(exerciseId) {
   await db.prs.put(next);
   return { current: next };
 }
+
 export async function getPR(exerciseId) {
   return db.prs.get(exerciseId);
 }
+
 export async function recalcAllPRs() {
   const exs = await db.exercises.toArray();
   for (const ex of exs) await updatePRForExercise(ex.id);
@@ -149,23 +174,30 @@ export async function addTemplate(name) {
   const now = new Date().toISOString();
   return db.templates.add({ name: clean, createdAt: now });
 }
+
 export async function renameTemplate(id, name) {
   const clean = String(name || "").trim();
   if (!clean) throw new Error("Name required");
   return db.templates.update(id, { name: clean });
 }
+
 export async function deleteTemplate(id) {
   return db.transaction("rw", db.templates, db.templateItems, async () => {
     await db.templateItems.where("templateId").equals(id).delete();
     await db.templates.delete(id);
   });
 }
+
 export async function getTemplates() {
   return db.templates.orderBy("createdAt").toArray();
 }
+
 export async function getTemplateWithItems(id) {
   const template = await db.templates.get(id);
-  const items = await db.templateItems.where("templateId").equals(id).sortBy("order");
+  const items = await db.templateItems
+    .where("templateId")
+    .equals(id)
+    .sortBy("order");
   return { template, items };
 }
 
@@ -178,14 +210,17 @@ export async function addTemplateItem(templateId, exerciseId) {
     templateId,
     exerciseId,
     order: count + 1,
+    defaultSets: 1,           // default to 1 (v4 adds this field)
     defaultReps: null,
     defaultDurationSec: null,
     defaultWeightKg: null,
   });
 }
+
 export async function deleteTemplateItem(id) {
   return db.templateItems.delete(id);
 }
+
 export async function updateTemplateItem(id, patch) {
   return db.templateItems.update(id, patch);
 }
@@ -214,7 +249,7 @@ export async function exportAll() {
     }
   );
   return {
-    schemaVersion: 3,
+    schemaVersion: 4, // align with db.version(4)
     exportedAt: new Date().toISOString(),
     tables: data,
   };
@@ -223,6 +258,7 @@ export async function exportAll() {
 export async function importAll(payload, { mode = "replace" } = {}) {
   if (!payload || typeof payload !== "object" || !payload.tables)
     throw new Error("Invalid payload");
+
   const {
     exercises = [],
     workouts = [],
@@ -261,10 +297,12 @@ export async function importAll(payload, { mode = "replace" } = {}) {
       ]);
     }
   );
+
+  // Recompute PRs after import so summaries are correct with current logic
   await recalcAllPRs();
 }
+
 // Ensure database is opened immediately (avoids version upgrade issues)
 db.open().catch((err) => {
   console.error("Dexie failed to open:", err);
 });
-

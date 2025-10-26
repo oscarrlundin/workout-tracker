@@ -1,5 +1,3 @@
-
-
 // src/App.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -29,7 +27,11 @@ import {
   addTemplateItem,
   deleteTemplateItem,
   updateTemplateItem,
+  // NEW:
+  getWorkoutByDate,
+  updateWorkoutMeta,
 } from "./db";
+
 import { liveQuery } from "dexie";
 import {
   LineChart,
@@ -40,6 +42,9 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+
+// NEW: Icon wrapper for your custom SVGs (src/components/Icon.jsx)
+import Icon from "./components/Icon";
 
 const TABS = ["Log", "Progress", "Exercises", "Templates", "Settings"];
 
@@ -81,6 +86,7 @@ function formatDuration(sec) {
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
 /* ---------- Toast ---------- */
 function Toast({ message }) {
   if (!message) return null;
@@ -93,6 +99,61 @@ function Toast({ message }) {
   );
 }
 
+/* ---------- NEW: helpers for Log header ---------- */
+function formatMMSS(total) {
+  if (!Number.isFinite(total) || total <= 0) return "00:00";
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function Modal({ open, onClose, title, children }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center">
+      <div className="w-full max-w-xl bg-zinc-900 text-white rounded-t-2xl sm:rounded-2xl p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">{title}</h3>
+          <button
+            className="px-3 py-1 rounded bg-zinc-800 border border-white/10"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-3">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const MOOD = [
+  { v: 1, glyph: "😖", label: "Horrible" },
+  { v: 2, glyph: "😕", label: "Bad" },
+  { v: 3, glyph: "😐", label: "Okay" },
+  { v: 4, glyph: "🙂", label: "Good" },
+  { v: 5, glyph: "😄", label: "Great" },
+];
+
+function MoodPicker({ value = 3, onChange }) {
+  return (
+    <div className="flex items-center justify-center gap-2">
+      {MOOD.map((m) => (
+        <button
+          key={m.v}
+          onClick={() => onChange(m.v)}
+          className={`w-9 h-9 grid place-items-center rounded-full border border-white/10 ${
+            m.v === value ? "bg-white/10" : "bg-transparent"
+          }`}
+          aria-label={m.label}
+          title={m.label}
+        >
+          <span className="text-lg leading-none">{m.glyph}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /* ---------- Main App ---------- */
 export default function App() {
@@ -124,27 +185,35 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-[100svh] max-w-xl mx-auto p-4 safe-top safe-bottom bg-white">
-      <h1 className="text-2xl font-bold">Repped</h1>
+    <div className="min-h-[100svh] max-w-xl mx-auto p-4 safe-top safe-bottom bg-black text-white">
+      <h1 className="text-2xl font-bold sr-only">Repped</h1>
 
-      <div className="mt-4 pb-24">
-        {tab === "Log" && <LogTab useLiveQuery={useLiveQueryHook} showToast={showToast} />}
-        {tab === "Progress" && <ProgressTab useLiveQuery={useLiveQueryHook} />}
-        {tab === "Exercises" && <ExercisesTab useLiveQuery={useLiveQueryHook} />}
-        {tab === "Templates" && <TemplatesTab useLiveQuery={useLiveQueryHook} />}
+      <div className="mt-1 pb-24">
+        {tab === "Log" && (
+          <LogTab useLiveQuery={useLiveQueryHook} showToast={showToast} />
+        )}
+        {tab === "Progress" && (
+          <ProgressTab useLiveQuery={useLiveQueryHook} />
+        )}
+        {tab === "Exercises" && (
+          <ExercisesTab useLiveQuery={useLiveQueryHook} />
+        )}
+        {tab === "Templates" && (
+          <TemplatesTab useLiveQuery={useLiveQueryHook} />
+        )}
         {tab === "Settings" && <SettingsTab />}
       </div>
 
       <Toast message={toast} />
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t bg-white safe-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-zinc-800 bg-black safe-bottom">
         <div className="mx-auto max-w-xl flex justify-around">
           {TABS.map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`flex-1 py-3 text-sm ${
-                tab === t ? "font-semibold text-black" : "text-gray-600"
+                tab === t ? "font-semibold text-white" : "text-white/70"
               }`}
             >
               {t}
@@ -185,8 +254,7 @@ function ExercisesTab({ useLiveQuery }) {
     try {
       if (editName.trim() && editName.trim() !== ex.name)
         await updateExerciseName(ex.id, editName.trim());
-      if (editTimed !== !!ex.isTimed)
-        await updateExerciseTimed(ex.id, editTimed);
+      if (editTimed !== !!ex.isTimed) await updateExerciseTimed(ex.id, editTimed);
       setEditingId(null);
     } catch (e) {
       alert(e.message);
@@ -204,21 +272,21 @@ function ExercisesTab({ useLiveQuery }) {
 
       <form onSubmit={handleAdd} className="mt-3 grid grid-cols-1 gap-2">
         <input
-          className="h-10 border rounded px-3 text-base w-full"
+          className="h-10 border rounded px-3 text-base w-full bg-zinc-900 border-zinc-800"
           placeholder="e.g., Plank or Dead Hang"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <div className="grid grid-cols-2 gap-2">
           <select
-            className="h-10 border rounded px-3 text-base"
+            className="h-10 border rounded px-3 text-base bg-zinc-900 border-zinc-800"
             value={type}
             onChange={(e) => setType(e.target.value)}
           >
             <option value="weighted">Weighted</option>
             <option value="bodyweight">Bodyweight</option>
           </select>
-          <label className="h-10 border rounded px-3 flex items-center gap-2 text-base">
+          <label className="h-10 border rounded px-3 flex items-center gap-2 text-base bg-zinc-900 border-zinc-800">
             <input
               type="checkbox"
               checked={isTimed}
@@ -227,24 +295,24 @@ function ExercisesTab({ useLiveQuery }) {
             Timed
           </label>
         </div>
-        <button className="min-h-[44px] px-4 rounded bg-black text-white">
+        <button className="min-h-[44px] px-4 rounded bg-white text-black">
           Add
         </button>
       </form>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <ul className="mt-4 space-y-2">
         {(exercises ?? []).map((ex) => (
-          <li key={ex.id} className="border rounded p-2">
+          <li key={ex.id} className="border border-zinc-800 rounded p-2 bg-zinc-900">
             <div className="flex justify-between items-start">
               <div>
                 <div className="font-medium break-words">{ex.name}</div>
                 <div className="flex gap-1 mt-1">
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-white/70">
                     {ex.type}
                   </span>
                   {ex.isTimed && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-white/70">
                       timed
                     </span>
                   )}
@@ -252,7 +320,7 @@ function ExercisesTab({ useLiveQuery }) {
               </div>
               <div className="flex gap-2">
                 <button
-                  className="border rounded px-2"
+                  className="border border-zinc-700 rounded px-2"
                   onClick={() => {
                     setEditingId(ex.id);
                     setEditName(ex.name);
@@ -262,7 +330,7 @@ function ExercisesTab({ useLiveQuery }) {
                   ✏️
                 </button>
                 <button
-                  className="border rounded px-2"
+                  className="border border-zinc-700 rounded px-2"
                   onClick={() => onDeleteExercise(ex.id, ex.name)}
                 >
                   🗑
@@ -271,9 +339,9 @@ function ExercisesTab({ useLiveQuery }) {
             </div>
 
             {editingId === ex.id && (
-              <div className="mt-2 border-t pt-2">
+              <div className="mt-2 border-t border-zinc-800 pt-2">
                 <input
-                  className="h-10 border rounded px-3 w-full mb-2"
+                  className="h-10 border rounded px-3 w-full mb-2 bg-zinc-900 border-zinc-800"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                 />
@@ -287,13 +355,13 @@ function ExercisesTab({ useLiveQuery }) {
                 </label>
                 <div className="flex gap-2 mt-2">
                   <button
-                    className="px-3 py-1 rounded bg-black text-white"
+                    className="px-3 py-1 rounded bg-white text-black"
                     onClick={() => saveEdit(ex)}
                   >
                     Save
                   </button>
                   <button
-                    className="px-3 py-1 rounded border"
+                    className="px-3 py-1 rounded border border-zinc-700"
                     onClick={() => setEditingId(null)}
                   >
                     Cancel
@@ -309,15 +377,12 @@ function ExercisesTab({ useLiveQuery }) {
 }
 
 /* ---------- Templates Tab ---------- */
-{/* list exercises in template (editable defaults) */}
-/* ---------- Templates Tab ---------- */
 function TemplatesTab({ useLiveQuery }) {
   const templates = useLiveQuery(getTemplates, []);
   const exercises = useLiveQuery(getExercises, []);
   const [name, setName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-const [setsInputs, setSetsInputs] = useState({});
-
+  const [setsInputs, setSetsInputs] = useState({});
 
   async function handleAddTemplate(e) {
     e.preventDefault();
@@ -339,9 +404,13 @@ const [setsInputs, setSetsInputs] = useState({});
   }
 
   const currentTemplate = useLiveQuery(
-    () => (selectedTemplate ? getTemplateWithItems(selectedTemplate) : Promise.resolve(null)),
+    () =>
+      selectedTemplate
+        ? getTemplateWithItems(selectedTemplate)
+        : Promise.resolve(null),
     [selectedTemplate]
   );
+
   // Sync input state when template items change
   useEffect(() => {
     if (!currentTemplate?.items) return;
@@ -353,20 +422,19 @@ const [setsInputs, setSetsInputs] = useState({});
   }, [currentTemplate?.items]);
 
   function onSetsChange(itemId, val) {
-  // Let the field be temporarily empty; keep only digits (optional)
-  if (!/^\d*$/.test(val)) return;
-  setSetsInputs((prev) => ({ ...prev, [itemId]: val }));
-}
+    if (!/^\d*$/.test(val)) return;
+    setSetsInputs((prev) => ({ ...prev, [itemId]: val }));
+  }
 
-function onSetsBlur(itemId) {
-  const raw = setsInputs[itemId];
-  const parsed = parseInt(raw, 10);
-  const clamped = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
-  setSetsInputs((prev) => ({ ...prev, [itemId]: String(clamped) }));
-  // Persist to Dexie only on commit
-  updateTemplateItem(itemId, { defaultSets: clamped });
-}
-
+  function onSetsBlur(itemId) {
+    const raw = setsInputs[itemId];
+    const parsed = parseInt(raw, 10);
+    const clamped = Number.isFinite(parsed)
+      ? Math.max(1, Math.min(parsed, 20))
+      : 1;
+    setSetsInputs((prev) => ({ ...prev, [itemId]: String(clamped) }));
+    updateTemplateItem(itemId, { defaultSets: clamped });
+  }
 
   return (
     <div className="overflow-x-hidden">
@@ -375,12 +443,12 @@ function onSetsBlur(itemId) {
       {/* Create template */}
       <form onSubmit={handleAddTemplate} className="mt-3 flex gap-2">
         <input
-          className="flex-1 h-10 border rounded px-3"
+          className="flex-1 h-10 border rounded px-3 bg-zinc-900 border-zinc-800"
           placeholder="Template name"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <button className="bg-black text-white px-4 rounded">Add</button>
+        <button className="bg-white text-black px-4 rounded">Add</button>
       </form>
 
       {/* List templates */}
@@ -388,13 +456,15 @@ function onSetsBlur(itemId) {
         {(templates ?? []).map((t) => (
           <li
             key={t.id}
-            className={`border rounded p-2 ${selectedTemplate === t.id ? "bg-gray-50" : ""}`}
+            className={`border border-zinc-800 rounded p-2 bg-zinc-900 ${
+              selectedTemplate === t.id ? "ring-1 ring-white/20" : ""
+            }`}
             onClick={() => setSelectedTemplate(t.id)}
           >
             <div className="flex justify-between items-center">
               <span className="font-medium">{t.name}</span>
               <button
-                className="text-xs text-gray-500"
+                className="text-xs text-white/60"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDeleteTemplate(t.id);
@@ -406,19 +476,23 @@ function onSetsBlur(itemId) {
           </li>
         ))}
         {templates?.length === 0 && (
-          <p className="text-gray-500 text-sm">No templates yet — create one above.</p>
+          <p className="text-white/60 text-sm">
+            No templates yet — create one above.
+          </p>
         )}
       </ul>
 
       {/* Template detail */}
       {currentTemplate?.template && (
-        <div className="mt-4 border-t pt-3">
-          <h3 className="font-semibold">{currentTemplate.template.name} Exercises</h3>
+        <div className="mt-4 border-t border-zinc-800 pt-3">
+          <h3 className="font-semibold">
+            {currentTemplate.template.name} Exercises
+          </h3>
 
           {/* Add exercise selector */}
           <div className="mt-2">
             <select
-              className="w-full h-10 border rounded px-3"
+              className="w-full h-10 border rounded px-3 bg-zinc-900 border-zinc-800"
               onChange={(e) => {
                 const exId = Number(e.target.value);
                 if (exId) handleAddExerciseToTemplate(exId);
@@ -442,18 +516,21 @@ function onSetsBlur(itemId) {
               const isTimed = !!ex?.isTimed;
               const isWeighted = ex?.type === "weighted";
               return (
-                <li key={it.id} className="border rounded p-2 text-sm">
+                <li key={it.id} className="border border-zinc-800 rounded p-2 text-sm bg-zinc-900">
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0">
-                      <div className="font-medium break-words">{ex?.name ?? "Unknown Exercise"}</div>
+                      <div className="font-medium break-words">
+                        {ex?.name ?? "Unknown Exercise"}
+                      </div>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                          {ex?.type}{isTimed ? " · timed" : ""}
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-white/70">
+                          {ex?.type}
+                          {isTimed ? " · timed" : ""}
                         </span>
                       </div>
                     </div>
                     <button
-                      className="text-xs text-gray-500 shrink-0"
+                      className="text-xs text-white/60 shrink-0"
                       onClick={() => deleteTemplateItem(it.id)}
                     >
                       Remove
@@ -463,32 +540,38 @@ function onSetsBlur(itemId) {
                   {/* defaults editor */}
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[11px] text-gray-600">Sets</label>
+                      <label className="block text-[11px] text-white/60">
+                        Sets
+                      </label>
                       <input
-  type="text"
-  inputMode="numeric"
-  pattern="[0-9]*"
-  className="w-full h-9 border rounded px-2"
-  value={setsInputs[it.id] ?? String(it.defaultSets ?? 1)}
-  onChange={(e) => onSetsChange(it.id, e.target.value)}
-  onBlur={() => onSetsBlur(it.id)}
-  placeholder="Sets"
-/>
-
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        className="w-full h-9 border rounded px-2 bg-zinc-900 border-zinc-800"
+                        value={setsInputs[it.id] ?? String(it.defaultSets ?? 1)}
+                        onChange={(e) => onSetsChange(it.id, e.target.value)}
+                        onBlur={() => onSetsBlur(it.id)}
+                        placeholder="Sets"
+                      />
                     </div>
 
                     {!isTimed && (
                       <div>
-                        <label className="block text-[11px] text-gray-600">Reps</label>
+                        <label className="block text-[11px] text-white/60">
+                          Reps
+                        </label>
                         <input
                           type="number"
                           min={1}
                           max={200}
-                          className="w-full h-9 border rounded px-2"
+                          className="w-full h-9 border rounded px-2 bg-zinc-900 border-zinc-800"
                           value={it.defaultReps ?? ""}
                           onChange={(e) =>
                             updateTemplateItem(it.id, {
-                              defaultReps: e.target.value === "" ? null : Number(e.target.value),
+                              defaultReps:
+                                e.target.value === ""
+                                  ? null
+                                  : Number(e.target.value),
                             })
                           }
                         />
@@ -497,16 +580,21 @@ function onSetsBlur(itemId) {
 
                     {isTimed && (
                       <div>
-                        <label className="block text-[11px] text-gray-600">Duration (sec)</label>
+                        <label className="block text-[11px] text-white/60">
+                          Duration (sec)
+                        </label>
                         <input
                           type="number"
                           min={1}
                           max={3600}
-                          className="w-full h-9 border rounded px-2"
+                          className="w-full h-9 border rounded px-2 bg-zinc-900 border-zinc-800"
                           value={it.defaultDurationSec ?? ""}
                           onChange={(e) =>
                             updateTemplateItem(it.id, {
-                              defaultDurationSec: e.target.value === "" ? null : Number(e.target.value),
+                              defaultDurationSec:
+                                e.target.value === ""
+                                  ? null
+                                  : Number(e.target.value),
                             })
                           }
                         />
@@ -515,15 +603,20 @@ function onSetsBlur(itemId) {
 
                     {isWeighted && (
                       <div>
-                        <label className="block text-[11px] text-gray-600">Weight (kg)</label>
+                        <label className="block text-[11px] text-white/60">
+                          Weight (kg)
+                        </label>
                         <input
                           type="number"
                           step="0.5"
-                          className="w-full h-9 border rounded px-2"
+                          className="w-full h-9 border rounded px-2 bg-zinc-900 border-zinc-800"
                           value={it.defaultWeightKg ?? ""}
                           onChange={(e) =>
                             updateTemplateItem(it.id, {
-                              defaultWeightKg: e.target.value === "" ? null : Number(e.target.value),
+                              defaultWeightKg:
+                                e.target.value === ""
+                                  ? null
+                                  : Number(e.target.value),
                             })
                           }
                         />
@@ -534,7 +627,7 @@ function onSetsBlur(itemId) {
               );
             })}
             {currentTemplate.items?.length === 0 && (
-              <p className="text-gray-500 text-sm">No exercises yet.</p>
+              <p className="text-white/60 text-sm">No exercises yet.</p>
             )}
           </ul>
         </div>
@@ -543,15 +636,16 @@ function onSetsBlur(itemId) {
   );
 }
 
-
-//* ---------- Log Tab (with Quick Add Exercise) ---------- */
+/* ---------- Log Tab (new design + Quick Add) ---------- */
 function LogTab({ useLiveQuery, showToast }) {
   const exercises = useLiveQuery(getExercises, []);
   const templates = useLiveQuery(getTemplates, []);
   const [selectedDate, setSelectedDate] = useState(todayISO());
 
+  // Workout & Sets
   const workouts = useLiveQuery(() => getWorkoutsByDate(selectedDate), [selectedDate]);
-  const workoutId = workouts?.[0]?.id;
+  const workout = workouts?.[0] ?? null;
+  const workoutId = workout?.id;
   const sets = useLiveQuery(
     () => (workoutId ? getSetsForWorkout(workoutId) : Promise.resolve([])),
     [workoutId]
@@ -559,50 +653,121 @@ function LogTab({ useLiveQuery, showToast }) {
 
   const [expanded, setExpanded] = useState({});
 
-  // --- Quick Add Exercise state ---
+  // Quick Add Exercise state
   const [qaExerciseId, setQaExerciseId] = useState("");
-  const qaExercise = (exercises ?? []).find((e) => String(e.id) === String(qaExerciseId));
+  const qaExercise = (exercises ?? []).find(
+    (e) => String(e.id) === String(qaExerciseId)
+  );
   const qaIsTimed = !!qaExercise?.isTimed;
   const qaIsWeighted = qaExercise?.type === "weighted";
- // Number of sets input handling (string while typing, number for logic)
-const [qaNumSets, setQaNumSets] = useState(3);
-const [qaNumSetsInput, setQaNumSetsInput] = useState("3");
 
-function commitQaNumSets() {
-  const parsed = parseInt(qaNumSetsInput, 10);
-  const clamped = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
-  setQaNumSets(clamped);
-  setQaNumSetsInput(String(clamped));
-}
+  const [qaNumSets, setQaNumSets] = useState(3);
+  const [qaNumSetsInput, setQaNumSetsInput] = useState("3");
+  function commitQaNumSets() {
+    const parsed = parseInt(qaNumSetsInput, 10);
+    const clamped = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, 20)) : 1;
+    setQaNumSets(clamped);
+    setQaNumSetsInput(String(clamped));
+  }
+  function bumpQaNumSets(delta) {
+    const base = parseInt(qaNumSetsInput, 10);
+    const next = Number.isFinite(base) ? base + delta : delta > 0 ? 1 : 1;
+    const clamped = Math.max(1, Math.min(next, 20));
+    setQaNumSets(clamped);
+    setQaNumSetsInput(String(clamped));
+  }
 
-function bumpQaNumSets(delta) {
-  const base = parseInt(qaNumSetsInput, 10);
-  const next = Number.isFinite(base) ? base + delta : delta > 0 ? 1 : 1;
-  const clamped = Math.max(1, Math.min(next, 20));
-  setQaNumSets(clamped);
-  setQaNumSetsInput(String(clamped));
-}
-
-  const [qaReps, setQaReps] = useState("");          // for non-timed
-  const [qaDuration, setQaDuration] = useState("");  // seconds, for timed
-  const [qaWeight, setQaWeight] = useState("");      // for weighted
+  const [qaReps, setQaReps] = useState(""); // for non-timed
+  const [qaDuration, setQaDuration] = useState(""); // seconds, for timed
+  const [qaWeight, setQaWeight] = useState(""); // for weighted
 
   function toggleExpanded(exId) {
     setExpanded((prev) => ({ ...prev, [exId]: !prev[exId] }));
   }
 
+  // Header state
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(workout?.title ?? "");
+  useEffect(() => {
+    setTitleDraft(workout?.title ?? "");
+    setTitleEditing(false);
+  }, [workout?.id]);
+
+  // Timer logic
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    let t;
+    if (workout?.startAt && !workout?.endAt) {
+      t = setInterval(() => setNowTick(Date.now()), 1000);
+    }
+    return () => clearInterval(t);
+  }, [workout?.startAt, workout?.endAt]);
+
+  function computedDurationSec() {
+    if (!workout) return 0;
+    if (workout.durationSec != null) return workout.durationSec;
+    if (workout.startAt && !workout.endAt) {
+      const start = new Date(workout.startAt).getTime();
+      return Math.max(0, Math.floor((nowTick - start) / 1000));
+    }
+    if (workout.startAt && workout.endAt) {
+      const s = new Date(workout.startAt).getTime();
+      const e = new Date(workout.endAt).getTime();
+      return Math.max(0, Math.floor((e - s) / 1000));
+    }
+    return 0;
+  }
+
+  async function ensureWorkout() {
+    if (workoutId) return workoutId;
+    return await createWorkout(selectedDate);
+  }
+  async function handleStartTimer() {
+    const wid = await ensureWorkout();
+    await updateWorkoutMeta(wid, {
+      startAt: new Date().toISOString(),
+      endAt: null,
+      durationSec: null,
+    });
+  }
+  async function handleStopTimer() {
+    const wid = await ensureWorkout();
+    const current = await getWorkoutByDate(selectedDate);
+    const startAt = current?.startAt
+      ? new Date(current.startAt).getTime()
+      : Date.now();
+    const endAt = Date.now();
+    const dur = Math.max(0, Math.floor((endAt - startAt) / 1000));
+    await updateWorkoutMeta(wid, {
+      endAt: new Date(endAt).toISOString(),
+      durationSec: dur,
+    });
+  }
+  async function setMood(v) {
+    const wid = await ensureWorkout();
+    await updateWorkoutMeta(wid, { mood: v });
+  }
+  async function saveTitle() {
+    const name = titleDraft.trim();
+    if (!name) return setTitleEditing(false);
+    const wid = await ensureWorkout();
+    await updateWorkoutMeta(wid, { title: name });
+    setTitleEditing(false);
+  }
+
+  // Existing set handlers
   async function handleUpdateSet(id, field, value) {
     const patch = { [field]: value === "" ? null : Number(value) };
     const exId = await updateSet(id, patch);
     if (exId) await updatePRForExercise(exId);
   }
-
   async function handleDeleteSet(id) {
     if (!window.confirm("Delete this set?")) return;
     const exId = await deleteSet(id);
     if (exId) await updatePRForExercise(exId);
   }
-
   async function handleDeleteExercise(exId) {
     if (!window.confirm("Delete all sets for this exercise?")) return;
     const del = (sets ?? []).filter((s) => s.exerciseId === exId);
@@ -610,7 +775,6 @@ function bumpQaNumSets(delta) {
     await updatePRForExercise(exId);
     showToast("Exercise removed");
   }
-
   async function handleAddSet(exId) {
     const exercise = exercises?.find((e) => e.id === Number(exId));
     if (!exercise) return;
@@ -634,19 +798,14 @@ function bumpQaNumSets(delta) {
     });
     showToast("Set added");
   }
-
-  // Quick Add Exercise -> create N sets for selected exercise using defaults typed here
   async function handleQuickAdd(e) {
     e.preventDefault();
     if (!qaExerciseId) return;
-
     const exId = Number(qaExerciseId);
     const ex = (exercises ?? []).find((x) => x.id === exId);
     if (!ex) return;
-
     const wid = workoutId || (await createWorkout(selectedDate));
 
-    // figure out where to continue setIndex
     const currentMax =
       Math.max(
         0,
@@ -656,28 +815,29 @@ function bumpQaNumSets(delta) {
       ) || 0;
 
     const count = Math.max(1, Math.min(Number(qaNumSets) || 1, 20));
-
     for (let i = 0; i < count; i++) {
       await addSet({
         workoutId: wid,
         exerciseId: exId,
         setIndex: currentMax + i + 1,
-        reps: ex.isTimed ? null : (qaReps === "" ? null : Number(qaReps)),
-        durationSec: ex.isTimed ? (qaDuration === "" ? null : Number(qaDuration)) : null,
-        weightKg: ex.type === "weighted" ? (qaWeight === "" ? null : Number(qaWeight)) : null,
+        reps: ex.isTimed ? null : qaReps === "" ? null : Number(qaReps),
+        durationSec: ex.isTimed
+          ? qaDuration === "" ? null : Number(qaDuration)
+          : null,
+        weightKg:
+          ex.type === "weighted"
+            ? qaWeight === "" ? null : Number(qaWeight)
+            : null,
       });
     }
-
     await updatePRForExercise(exId);
     showToast(`${count} set${count > 1 ? "s" : ""} added to ${ex.name}`);
-
-    // keep exercise selected but clear fields
     setQaReps("");
     setQaDuration("");
     setQaWeight("");
   }
 
-  // Group sets by exercise
+  // Derived
   const groupedSets = useMemo(() => {
     const grouped = {};
     (sets ?? []).forEach((s) => {
@@ -687,36 +847,375 @@ function bumpQaNumSets(delta) {
     return grouped;
   }, [sets]);
 
-  return (
-    <div>
-      <h2 className="font-semibold">Log Workout</h2>
+  const exerciseCount = Object.keys(groupedSets).length;
+  const durationText = formatMMSS(computedDurationSec());
+  const moodValue = Number(workout?.mood ?? 3);
+  const moodFace = MOOD.find((m) => m.v === moodValue)?.glyph ?? "😐";
 
-      {/* Date selector */}
-      <div className="mt-3">
-        <label className="block text-sm font-medium mb-1">Date</label>
-        <input
-          type="date"
-          className="w-full h-10 border rounded px-3 text-base"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-        />
+  return (
+    <div className="text-white">
+      {/* HEADER */}
+      <div className="sticky top-0 bg-black pb-3 safe-top">
+        <div className="flex items-center justify-between pt-2">
+          <button
+            onClick={() => setTemplatesOpen(true)}
+            className="p-2 rounded-xl active:opacity-80"
+            aria-label="Open templates"
+          >
+            <Icon name="templates" className="w-7 h-7 text-white/90" />
+          </button>
+          <div className="flex-1 text-center">
+            {!titleEditing ? (
+              <button
+                className="text-3xl font-extrabold tracking-tight active:opacity-90"
+                onClick={() => setTitleEditing(true)}
+                title="Edit title"
+              >
+                {(workout?.title || "WORKOUT").toUpperCase()}
+              </button>
+            ) : (
+              <input
+                autoFocus
+                className="bg-transparent border-b border-white/30 text-3xl font-extrabold text-center outline-none"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={saveTitle}
+                onKeyDown={(e) => e.key === "Enter" && saveTitle()}
+                placeholder="Name your workout"
+              />
+            )}
+            <div className="text-sm text-white/60 mt-1">
+              {new Date(selectedDate).toLocaleDateString()}
+            </div>
+          </div>
+          <button
+            onClick={() => setCalendarOpen(true)}
+            className="p-2 rounded-xl active:opacity-80"
+            aria-label="Pick date"
+          >
+            <Icon name="calendar" className="w-7 h-7 text-white/90" />
+          </button>
+        </div>
+
+        {/* Start/Stop pill */}
+        <div className="mt-3 flex justify-end">
+          {workout?.startAt && !workout?.endAt ? (
+            <button className="px-3 py-1 rounded-full bg-white text-black text-sm font-medium" onClick={handleStopTimer}>
+              Stop
+            </button>
+          ) : (
+            <button className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm" onClick={handleStartTimer}>
+              Start
+            </button>
+          )}
+        </div>
+
+        {/* Stats row */}
+        <div className="mt-3 grid grid-cols-3 items-center text-center">
+          <div>
+            <div className="text-2xl font-semibold">{exerciseCount}</div>
+            <div className="text-xs text-white/60">Exercises</div>
+          </div>
+          <div>
+            <div className="text-2xl">{moodFace}</div>
+            <div className="text-xs text-white/60">Mood</div>
+            <div className="mt-1">
+              <MoodPicker value={moodValue} onChange={setMood} />
+            </div>
+          </div>
+          <div>
+            <div className="text-2xl font-semibold">{durationText}</div>
+            <div className="text-xs text-white/60">
+              {workout?.startAt && !workout?.endAt ? "Live" : "Duration"}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Load Template */}
-      <div className="mt-3">
-        <label className="block text-sm font-medium mb-1">Load Template</label>
+      {/* Quick Add Exercise */}
+      <form
+        onSubmit={handleQuickAdd}
+        className="mt-4 border border-zinc-800 rounded-xl bg-zinc-900 p-3"
+      >
+        <h3 className="font-semibold mb-2">Add Exercise</h3>
+
+        <div className="grid gap-2">
+          <select
+            className="h-10 border rounded bg-zinc-800 border-zinc-700 px-3 text-base"
+            value={qaExerciseId}
+            onChange={(e) => setQaExerciseId(e.target.value)}
+          >
+            <option value="">Select exercise…</option>
+            {(exercises ?? []).map((ex) => (
+              <option key={ex.id} value={ex.id}>
+                {ex.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-white/70">Sets</label>
+            <button
+              type="button"
+              className="h-10 w-10 border rounded border-zinc-700"
+              onClick={() => bumpQaNumSets(-1)}
+            >
+              –
+            </button>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="h-10 w-20 border rounded px-2 text-center bg-zinc-800 border-zinc-700"
+              value={qaNumSetsInput}
+              onChange={(e) => setQaNumSetsInput(e.target.value)}
+              onBlur={commitQaNumSets}
+              placeholder="sets"
+            />
+            <button
+              type="button"
+              className="h-10 w-10 border rounded border-zinc-700"
+              onClick={() => bumpQaNumSets(1)}
+            >
+              +
+            </button>
+          </div>
+
+          {qaExerciseId && !qaIsTimed && (
+            <input
+              type="number"
+              className="h-10 border rounded px-3 text-base bg-zinc-800 border-zinc-700"
+              placeholder="Reps (optional)"
+              value={qaReps}
+              onChange={(e) => setQaReps(e.target.value)}
+            />
+          )}
+
+          {qaExerciseId && qaIsTimed && (
+            <input
+              type="number"
+              className="h-10 border rounded px-3 text-base bg-zinc-800 border-zinc-700"
+              placeholder="Duration in seconds (optional)"
+              value={qaDuration}
+              onChange={(e) => setQaDuration(e.target.value)}
+            />
+          )}
+
+          {qaExerciseId && qaIsWeighted && (
+            <input
+              type="number"
+              step="0.5"
+              className="h-10 border rounded px-3 text-base bg-zinc-800 border-zinc-700"
+              placeholder="Weight (kg, optional)"
+              value={qaWeight}
+              onChange={(e) => setQaWeight(e.target.value)}
+            />
+          )}
+
+          <button className="min-h-[44px] px-4 rounded bg-white text-black font-semibold">
+            Add to Workout
+          </button>
+        </div>
+      </form>
+
+      {/* Grouped exercises */}
+      <div className="mt-4 space-y-3">
+        {Object.entries(groupedSets).map(([exId, exSets]) => {
+          const exercise = exercises?.find((e) => e.id === Number(exId));
+          if (!exercise) return null;
+          const isTimed = !!exercise.isTimed;
+          const isWeighted = exercise.type === "weighted";
+
+          const repsList = exSets.map((s) => s.reps).filter((r) => r != null);
+          const durList = exSets.map((s) => s.durationSec).filter((r) => r != null);
+          const wList = exSets.map((s) => s.weightKg).filter((r) => r != null);
+          const uniformReps =
+            repsList.length && repsList.every((v) => v === repsList[0])
+              ? repsList[0]
+              : null;
+          const uniformDur =
+            durList.length && durList.every((v) => v === durList[0])
+              ? durList[0]
+              : null;
+          const uniformW =
+            wList.length && wList.every((v) => v === wList[0]) ? wList[0] : null;
+
+          const summary =
+            isTimed && uniformDur
+              ? `${exSets.length} × ${formatDuration(uniformDur)}`
+              : !isTimed && uniformReps
+              ? `${exSets.length} × ${uniformReps}`
+              : `${exSets.length} sets`;
+          const suffix =
+            isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
+
+          return (
+            <div key={exId} className="border border-zinc-800 rounded-xl bg-zinc-900">
+              <div className="flex justify-between items-center p-3">
+                <div
+                  onClick={() => toggleExpanded(exId)}
+                  className="flex-1 text-left"
+                >
+                  <div className="font-medium">{exercise.name}</div>
+                  <div className="text-sm text-white/60">
+                    {summary}
+                    {suffix}
+                  </div>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <button
+                    onClick={() => handleAddSet(exId)}
+                    className="text-xs border rounded px-2 py-1 border-zinc-700"
+                  >
+                    + Set
+                  </button>
+                  <button
+                    onClick={() => handleDeleteExercise(Number(exId))}
+                    className="text-xs border rounded px-2 py-1 border-zinc-700"
+                  >
+                    🗑
+                  </button>
+                  <button
+                    onClick={() => toggleExpanded(exId)}
+                    className="text-white/60 text-sm w-6 text-center"
+                  >
+                    {expanded[exId] ? "▲" : "▼"}
+                  </button>
+                </div>
+              </div>
+
+              {expanded[exId] && (
+                <div className="border-t border-zinc-800 px-3 pb-3">
+                  <table className="w-full text-sm mt-2">
+                    <thead>
+                      <tr className="text-white/60 border-b border-zinc-800">
+                        <th className="text-left w-10 py-1">#</th>
+                        {!isTimed && <th>Reps</th>}
+                        {isTimed && <th>Time (s)</th>}
+                        {isWeighted && <th>Weight (kg)</th>}
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {exSets
+                        .sort((a, b) => a.setIndex - b.setIndex)
+                        .map((s, idx) => (
+                          <tr
+                            key={s.id}
+                            className="border-b border-zinc-800 last:border-0"
+                          >
+                            <td className="py-1">{idx + 1}</td>
+                            {!isTimed && (
+                              <td>
+                                <input
+                                  type="number"
+                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                  value={s.reps ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateSet(s.id, "reps", e.target.value)
+                                  }
+                                />
+                              </td>
+                            )}
+                            {isTimed && (
+                              <td>
+                                <input
+                                  type="number"
+                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                  value={s.durationSec ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateSet(
+                                      s.id,
+                                      "durationSec",
+                                      e.target.value
+                                    )
+                                  }
+                                />
+                              </td>
+                            )}
+                            {isWeighted && (
+                              <td>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                  value={s.weightKg ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateSet(
+                                      s.id,
+                                      "weightKg",
+                                      e.target.value
+                                    )
+                                  }
+                                />
+                              </td>
+                            )}
+                            <td className="text-right">
+                              <button
+                                className="text-xs text-white/60"
+                                onClick={() => handleDeleteSet(s.id)}
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {(!sets || sets.length === 0) && (
+          <p className="text-white/60 text-sm text-center mt-6">
+            No exercises logged for this date yet.
+          </p>
+        )}
+      </div>
+
+      {/* Calendar modal */}
+      <Modal
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        title="Pick a date"
+      >
+        <input
+          type="date"
+          className="w-full h-12 rounded bg-zinc-800 border border-white/10 px-3"
+          value={selectedDate}
+          onChange={(e) => {
+            setSelectedDate(e.target.value);
+            setCalendarOpen(false);
+          }}
+        />
+        {!workout && (
+          <p className="mt-3 text-sm text-white/60">
+            No workout yet for this date. Load a template or add an exercise.
+          </p>
+        )}
+      </Modal>
+
+      {/* Templates modal */}
+      <Modal
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        title="Load a template"
+      >
         <select
-          className="w-full h-10 border rounded px-3 text-base"
+          className="w-full h-12 rounded bg-zinc-800 border border-white/10 px-3"
           onChange={async (e) => {
             const id = Number(e.target.value);
             if (!id) return;
             const data = await getTemplateWithItems(id);
-            if (!data?.items?.length) return alert("This template has no exercises.");
+            if (!data?.items?.length)
+              return alert("This template has no exercises.");
 
-            const wid = await createWorkout(selectedDate);
+            const wid = await ensureWorkout();
             for (const item of data.items) {
               const count = Math.max(1, item.defaultSets ?? 1);
-              const ex = (exercises ?? []).find((e) => e.id === item.exerciseId);
+              const ex = (exercises ?? []).find((x) => x.id === item.exerciseId);
               const isTimed = !!ex?.isTimed;
               const isWeighted = ex?.type === "weighted";
               const currentMax =
@@ -739,7 +1238,7 @@ function bumpQaNumSets(delta) {
               }
             }
             showToast(`Loaded template: ${data.template.name}`);
-            e.target.value = "";
+            setTemplatesOpen(false);
           }}
           defaultValue=""
         >
@@ -750,421 +1249,7 @@ function bumpQaNumSets(delta) {
             </option>
           ))}
         </select>
-      </div>
-
-      {/* Quick Add Exercise */}
-      <form onSubmit={handleQuickAdd} className="mt-4 border rounded p-3">
-        <h3 className="font-semibold">Add Exercise</h3>
-
-        <div className="mt-2 grid grid-cols-1 gap-2">
-          <select
-            className="h-10 border rounded px-3 text-base"
-            value={qaExerciseId}
-            onChange={(e) => setQaExerciseId(e.target.value)}
-          >
-            <option value="">Select exercise…</option>
-            {(exercises ?? []).map((ex) => (
-              <option key={ex.id} value={ex.id}>
-                {ex.name}
-              </option>
-            ))}
-          </select>
-
-         <div className="flex items-center gap-2">
-  <label className="text-sm text-gray-700">Sets</label>
-  <button
-    type="button"
-    className="h-10 w-10 border rounded"
-    onClick={() => bumpQaNumSets(-1)}
-  >
-    –
-  </button>
-  <input
-    type="text"
-    inputMode="numeric"
-    pattern="[0-9]*"
-    className="h-10 w-20 border rounded px-2 text-center"
-    value={qaNumSetsInput}
-    onChange={(e) => setQaNumSetsInput(e.target.value)}
-    onBlur={commitQaNumSets}
-    placeholder="sets"
-  />
-  <button
-    type="button"
-    className="h-10 w-10 border rounded"
-    onClick={() => bumpQaNumSets(1)}
-  >
-    +
-  </button>
-</div>
-
-
-          {/* Reps or Duration depending on exercise */}
-          {qaExerciseId && !qaIsTimed && (
-            <input
-              type="number"
-              className="h-10 border rounded px-3 text-base"
-              placeholder="Reps (optional)"
-              value={qaReps}
-              onChange={(e) => setQaReps(e.target.value)}
-            />
-          )}
-
-          {qaExerciseId && qaIsTimed && (
-            <input
-              type="number"
-              className="h-10 border rounded px-3 text-base"
-              placeholder="Duration in seconds (optional)"
-              value={qaDuration}
-              onChange={(e) => setQaDuration(e.target.value)}
-            />
-          )}
-
-          {/* Weight if weighted */}
-          {qaExerciseId && qaIsWeighted && (
-            <input
-              type="number"
-              step="0.5"
-              className="h-10 border rounded px-3 text-base"
-              placeholder="Weight (kg, optional)"
-              value={qaWeight}
-              onChange={(e) => setQaWeight(e.target.value)}
-            />
-          )}
-
-          <button className="min-h-[44px] px-4 rounded bg-black text-white">
-            Add to Workout
-          </button>
-        </div>
-      </form>
-
-      {/* Grouped exercises */}
-      <div className="mt-4 space-y-3">
-        {Object.entries(groupedSets).map(([exId, exSets]) => {
-          const exercise = exercises?.find((e) => e.id === Number(exId));
-          if (!exercise) return null;
-          const isTimed = !!exercise.isTimed;
-          const isWeighted = exercise.type === "weighted";
-
-          // Summary
-          const repsList = exSets.map((s) => s.reps).filter((r) => r != null);
-          const durList = exSets.map((s) => s.durationSec).filter((r) => r != null);
-          const wList = exSets.map((s) => s.weightKg).filter((r) => r != null);
-          const uniformReps =
-            repsList.length && repsList.every((v) => v === repsList[0]) ? repsList[0] : null;
-          const uniformDur =
-            durList.length && durList.every((v) => v === durList[0]) ? durList[0] : null;
-          const uniformW =
-            wList.length && wList.every((v) => v === wList[0]) ? wList[0] : null;
-
-          const summary =
-            isTimed && uniformDur
-              ? `${exSets.length} × ${formatDuration(uniformDur)}`
-              : !isTimed && uniformReps
-              ? `${exSets.length} × ${uniformReps}`
-              : `${exSets.length} sets`;
-          const suffix = isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
-
-          return (
-            <div key={exId} className="border rounded">
-              <div className="flex justify-between items-center p-3 bg-gray-50">
-                <div onClick={() => toggleExpanded(exId)} className="flex-1 text-left">
-                  <div className="font-medium">{exercise.name}</div>
-                  <div className="text-sm text-gray-600">
-                    {summary}
-                    {suffix}
-                  </div>
-                </div>
-                <div className="flex gap-2 items-center">
-                  <button
-                    onClick={() => handleAddSet(exId)}
-                    className="text-xs border rounded px-2 py-1"
-                  >
-                    + Set
-                  </button>
-                  <button
-                    onClick={() => handleDeleteExercise(Number(exId))}
-                    className="text-xs border rounded px-2 py-1"
-                  >
-                    🗑
-                  </button>
-                  <button
-                    onClick={() => toggleExpanded(exId)}
-                    className="text-gray-600 text-sm w-6 text-center"
-                  >
-                    {expanded[exId] ? "▲" : "▼"}
-                  </button>
-                </div>
-              </div>
-
-              {expanded[exId] && (
-                <div className="border-t px-3 pb-3">
-                  <table className="w-full text-sm mt-2">
-                    <thead>
-                      <tr className="text-gray-500 border-b">
-                        <th className="text-left w-10 py-1">#</th>
-                        {!isTimed && <th>Reps</th>}
-                        {isTimed && <th>Time (s)</th>}
-                        {isWeighted && <th>Weight (kg)</th>}
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {exSets
-                        .sort((a, b) => a.setIndex - b.setIndex)
-                        .map((s, idx) => (
-                          <tr key={s.id} className="border-b last:border-0">
-                            <td className="py-1">{idx + 1}</td>
-                            {!isTimed && (
-                              <td>
-                                <input
-                                  type="number"
-                                  className="w-20 border rounded px-1 text-center"
-                                  value={s.reps ?? ""}
-                                  onChange={(e) =>
-                                    handleUpdateSet(s.id, "reps", e.target.value)
-                                  }
-                                />
-                              </td>
-                            )}
-                            {isTimed && (
-                              <td>
-                                <input
-                                  type="number"
-                                  className="w-20 border rounded px-1 text-center"
-                                  value={s.durationSec ?? ""}
-                                  onChange={(e) =>
-                                    handleUpdateSet(s.id, "durationSec", e.target.value)
-                                  }
-                                />
-                              </td>
-                            )}
-                            {isWeighted && (
-                              <td>
-                                <input
-                                  type="number"
-                                  step="0.5"
-                                  className="w-20 border rounded px-1 text-center"
-                                  value={s.weightKg ?? ""}
-                                  onChange={(e) =>
-                                    handleUpdateSet(s.id, "weightKg", e.target.value)
-                                  }
-                                />
-                              </td>
-                            )}
-                            <td className="text-right">
-                              <button
-                                className="text-xs text-gray-500"
-                                onClick={() => handleDeleteSet(s.id)}
-                              >
-                                ✕
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {(!sets || sets.length === 0) && (
-          <p className="text-gray-500 text-sm text-center">
-            No exercises logged for this date yet.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
-function RowForSet({ s, onDelete, showToast }) {
-  const [exercise, setExercise] = useState(null);
-  const [editing, setEditing] = useState(false);
-
-  const [reps, setReps] = useState(s.reps ?? "");
-  const [weight, setWeight] = useState(
-    typeof s.weightKg === "number" ? String(s.weightKg) : ""
-  );
-  const [min, setMin] = useState(
-    Number.isFinite(s.durationSec) ? String(Math.floor(s.durationSec / 60)) : ""
-  );
-  const [sec, setSec] = useState(
-    Number.isFinite(s.durationSec) ? String(s.durationSec % 60) : ""
-  );
-
-  useEffect(() => {
-    db.exercises.get(s.exerciseId).then(setExercise);
-  }, [s.exerciseId]);
-
-  const isTimed = !!exercise?.isTimed;
-  const isWeighted = exercise?.type === "weighted";
-
-  function prToastFromImprovements(exName, improvements) {
-    if (!improvements) return;
-    const parts = [];
-    if (improvements.bestWeight)
-      parts.push(`Max Weight ${improvements.bestWeight.new} kg`);
-    if (improvements.best1RM)
-      parts.push(`Est 1RM ${improvements.best1RM.new} kg`);
-    if (improvements.bestReps)
-      parts.push(`Best Reps ${improvements.bestReps.new}`);
-    if (improvements.bestDurationSec)
-      parts.push(`Best Duration ${formatDuration(improvements.bestDurationSec.new)}`);
-    if (parts.length) showToast(`🎉 New PR – ${exName}: ${parts[0]}`);
-  }
-
-  async function onSave() {
-    if (isTimed) {
-      const m = Number(min || 0);
-      let sc = Number(sec || 0);
-      if (!Number.isFinite(m) && !Number.isFinite(sc)) return;
-      sc = Math.max(0, Math.min(59, sc));
-      const total = Math.round((m >= 0 ? m : 0) * 60 + (sc >= 0 ? sc : 0));
-      if (!total) return;
-      const weightNum = isWeighted && weight !== "" ? Number(weight) : null;
-      const exerciseId = await updateSet(s.id, {
-        durationSec: total,
-        weightKg: Number.isFinite(weightNum) ? weightNum : null,
-        reps: null,
-      });
-      const res = await updatePRForExercise(exerciseId || s.exerciseId);
-      prToastFromImprovements(exercise?.name ?? "Exercise", res?.improvements);
-    } else {
-      const repsNum = Number(reps);
-      if (!Number.isFinite(repsNum) || repsNum <= 0) return;
-      const weightNum = weight === "" ? null : Number(weight);
-      const exerciseId = await updateSet(s.id, {
-        reps: repsNum,
-        weightKg: Number.isFinite(weightNum) ? weightNum : null,
-        durationSec: null,
-      });
-      const res = await updatePRForExercise(exerciseId || s.exerciseId);
-      prToastFromImprovements(exercise?.name ?? "Exercise", res?.improvements);
-    }
-    setEditing(false);
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="font-medium truncate">{exercise?.name ?? "…"}</div>
-
-        {!editing ? (
-          <div className="text-gray-600 text-sm">
-            Set {s.setIndex}:{" "}
-            {isTimed
-              ? `${formatDuration(s.durationSec ?? 0)}`
-              : `${s.reps} reps`}
-            {typeof s.weightKg === "number" ? ` @ ${s.weightKg} kg` : ""}
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {isTimed ? (
-              <>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="w-20 h-10 border rounded px-3 text-base"
-                  value={min}
-                  onChange={(e) => setMin(e.target.value)}
-                  placeholder="min"
-                />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="w-20 h-10 border rounded px-3 text-base"
-                  value={sec}
-                  onChange={(e) => setSec(e.target.value)}
-                  placeholder="sec"
-                />
-                {isWeighted && (
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className="w-28 h-10 border rounded px-3 text-base"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    placeholder="weight (kg)"
-                  />
-                )}
-              </>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="w-24 h-10 border rounded px-3 text-base"
-                  value={reps}
-                  onChange={(e) => setReps(e.target.value)}
-                  placeholder="reps"
-                />
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="w-28 h-10 border rounded px-3 text-base"
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  placeholder="weight (kg)"
-                />
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex shrink-0 gap-2">
-        {!editing ? (
-          <>
-            <button
-              className="min-h-[36px] px-3 border rounded"
-              onClick={() => setEditing(true)}
-            >
-              Edit
-            </button>
-            <button
-              className="min-h-[36px] px-3 border rounded"
-              onClick={() => onDelete(s.id, s)}
-            >
-              Delete
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              className="min-h-[36px] px-3 border rounded bg-black text-white"
-              onClick={onSave}
-            >
-              Save
-            </button>
-            <button
-              className="min-h-[36px] px-3 border rounded"
-              onClick={() => {
-                setEditing(false);
-                setReps(s.reps ?? "");
-                setWeight(typeof s.weightKg === "number" ? String(s.weightKg) : "");
-                setMin(
-                  Number.isFinite(s.durationSec)
-                    ? String(Math.floor(s.durationSec / 60))
-                    : ""
-                );
-                setSec(
-                  Number.isFinite(s.durationSec) ? String(s.durationSec % 60) : ""
-                );
-              }}
-            >
-              Cancel
-            </button>
-          </>
-        )}
-      </div>
+      </Modal>
     </div>
   );
 }
@@ -1210,10 +1295,14 @@ function ProgressTab({ useLiveQuery }) {
       const rows = Object.entries(byDate)
         .map(([dateISO, sets]) => {
           if (isTimed) {
-            const bestDuration = Math.max(...sets.map((s) => s.durationSec ?? 0));
+            const bestDuration = Math.max(
+              ...sets.map((s) => s.durationSec ?? 0)
+            );
             return { dateISO, bestDuration };
           } else {
-            const maxWeight = Math.max(...sets.map((s) => s.weightKg ?? 0));
+            const maxWeight = Math.max(
+              ...sets.map((s) => s.weightKg ?? 0)
+            );
             const bestReps = Math.max(...sets.map((s) => s.reps ?? 0));
             const best1RM = Math.max(
               ...sets.map((s) => epley1RM(s.weightKg ?? 0, s.reps ?? 0))
@@ -1253,7 +1342,7 @@ function ProgressTab({ useLiveQuery }) {
     <div>
       <div className="flex flex-wrap gap-2 items-center">
         <select
-          className="h-10 border rounded px-3 text-base"
+          className="h-10 border rounded px-3 text-base bg-zinc-900 border-zinc-800"
           value={exerciseId}
           onChange={(e) => setExerciseId(e.target.value)}
         >
@@ -1267,7 +1356,7 @@ function ProgressTab({ useLiveQuery }) {
 
         {isTimed ? (
           <select
-            className="h-10 border rounded px-3 text-base"
+            className="h-10 border rounded px-3 text-base bg-zinc-900 border-zinc-800"
             value="bestDuration"
             disabled
           >
@@ -1275,7 +1364,7 @@ function ProgressTab({ useLiveQuery }) {
           </select>
         ) : (
           <select
-            className="h-10 border rounded px-3 text-base"
+            className="h-10 border rounded px-3 text-base bg-zinc-900 border-zinc-800"
             value={metric}
             onChange={(e) => setMetric(e.target.value)}
           >
@@ -1286,13 +1375,10 @@ function ProgressTab({ useLiveQuery }) {
         )}
       </div>
 
-      <div className="mt-4 h-64 border rounded p-2">
+      <div className="mt-4 h-64 border rounded p-2 border-zinc-800 bg-zinc-900">
         {exerciseId ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={series}
-              margin={{ top: 10, right: 16, bottom: 0, left: 8 }}
-            >
+            <LineChart data={series} margin={{ top: 10, right: 16, bottom: 0, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="x" />
               <YAxis />
@@ -1305,7 +1391,7 @@ function ProgressTab({ useLiveQuery }) {
             </LineChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+          <div className="h-full flex items-center justify-center text-white/60 text-sm">
             Choose an exercise to see progress
           </div>
         )}
@@ -1313,7 +1399,7 @@ function ProgressTab({ useLiveQuery }) {
 
       {/* PR summary card */}
       {pr && (
-        <div className="mt-4 border rounded p-3 text-sm">
+        <div className="mt-4 border rounded p-3 text-sm border-zinc-800 bg-zinc-900">
           <div className="font-semibold mb-1">🏆 Personal Records</div>
           <ul className="space-y-1">
             {pr.bestWeight != null && (
@@ -1343,14 +1429,14 @@ function ProgressTab({ useLiveQuery }) {
               </li>
             )}
           </ul>
-          <div className="text-xs text-gray-500 mt-2">
+          <div className="text-xs text-white/60 mt-2">
             Updated {new Date(pr.updatedAt).toLocaleString()}
           </div>
         </div>
       )}
 
       {series.length > 0 && (
-        <div className="mt-3 text-sm text-gray-700">
+        <div className="mt-3 text-sm text-white/80">
           <strong>Latest:</strong>{" "}
           {isTimed
             ? formatDuration(series[series.length - 1].y)
@@ -1436,23 +1522,23 @@ function SettingsTab() {
 
   return (
     <div className="space-y-6">
-      <section className="border rounded p-3">
+      <section className="border border-zinc-800 rounded p-3 bg-zinc-900">
         <h3 className="font-semibold">Backup & Restore</h3>
-        <p className="text-sm text-gray-600 mt-1">
+        <p className="text-sm text-white/70 mt-1">
           Export all local data (exercises, workouts, sets, PRs) to a JSON file,
           or import from a previous backup.
         </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
           <button
-            className="min-h-[44px] px-4 rounded bg-black text-white disabled:opacity-60"
+            className="min-h-[44px] px-4 rounded bg-white text-black disabled:opacity-60"
             disabled={exporting}
             onClick={handleExport}
           >
             {exporting ? "Exporting…" : "Export JSON"}
           </button>
 
-          <label className="min-h-[44px] px-4 rounded border flex items-center gap-2">
+          <label className="min-h-[44px] px-4 rounded border border-zinc-700 bg-zinc-800 flex items-center gap-2">
             <span>Import JSON</span>
             <input
               ref={fileInputRef}
@@ -1465,9 +1551,9 @@ function SettingsTab() {
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          <label className="text-sm text-gray-700">Import mode</label>
+          <label className="text-sm text-white/80">Import mode</label>
           <select
-            className="h-10 border rounded px-3 text-base"
+            className="h-10 border rounded px-3 text-base bg-zinc-900 border-zinc-800"
             value={mode}
             onChange={(e) => setMode(e.target.value)}
             disabled={importing}
@@ -1478,28 +1564,32 @@ function SettingsTab() {
         </div>
 
         {importing && (
-          <p className="text-sm text-gray-600 mt-2">Importing… please wait.</p>
+          <p className="text-sm text-white/70 mt-2">Importing… please wait.</p>
         )}
       </section>
 
-      <section className="border rounded p-3">
+      <section className="border border-zinc-800 rounded p-3 bg-zinc-900">
         <h3 className="font-semibold">Danger Zone</h3>
-        <p className="text-sm text-gray-600 mt-1">
+        <p className="text-sm text-white/70 mt-1">
           You can clear all local data if needed (use Export first).
         </p>
         <button
-          className="mt-2 min-h-[44px] px-4 rounded border"
+          className="mt-2 min-h-[44px] px-4 rounded border border-zinc-700 bg-zinc-800"
           onClick={async () => {
             const ok = window.confirm(
               "This will delete ALL local data (exercises, workouts, sets, PRs). Are you sure?"
             );
             if (!ok) return;
-            await db.transaction("rw", [db.exercises, db.workouts, db.sets, db.prs], async () => {
-              await db.sets.clear();
-              await db.workouts.clear();
-              await db.prs.clear();
-              await db.exercises.clear();
-            });
+            await db.transaction(
+              "rw",
+              [db.exercises, db.workouts, db.sets, db.prs],
+              async () => {
+                await db.sets.clear();
+                await db.workouts.clear();
+                await db.prs.clear();
+                await db.exercises.clear();
+              }
+            );
             alert("All local data cleared.");
           }}
         >
