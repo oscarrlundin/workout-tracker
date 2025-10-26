@@ -1,14 +1,20 @@
+// vite.config.js
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import svgr from 'vite-plugin-svgr';
-
+import svgr from 'vite-plugin-svgr'
+import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
-  base: '/workout-tracker/', // <-- change if your repo name differs
+  base: '/workout-tracker/',
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   plugins: [
+    svgr(),           // run SVGR before React transform
     react(),
-    svgr(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'robots.txt', 'apple-touch-icon.png'],
@@ -30,7 +36,6 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/workout-tracker/index.html',
       }
-      
     })
   ],
 })
