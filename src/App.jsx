@@ -897,8 +897,8 @@ function LogTab({ useLiveQuery, showToast }) {
           </button>
         </div>
 
-        {/* Date (bold, uppercase, top-aligned) + Title */}
-        <div className="text-center mt-2">
+        {/* Date (bold, uppercase, aligned with top icons) + Title */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 text-center">
           <button
             onClick={() => setCalendarOpen(true)}
             className="text-base font-extrabold uppercase tracking-wide active:opacity-80"
