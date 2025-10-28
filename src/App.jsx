@@ -1528,7 +1528,7 @@ function SettingsTab() {
 
   return (
     <div className="space-y-6">
-      <section className="border border-zinc-800 rounded p-3 bg-zinc-900">
+<div key={exId} className="rounded-xl bg-[#343434]">
         <h3 className="font-semibold">Backup & Restore</h3>
         <p className="text-sm text-white/70 mt-1">
           Export all local data (exercises, workouts, sets, PRs) to a JSON file,
