@@ -256,18 +256,10 @@ export default function App() {
 
       {/* Fixed bottom nav: exact height 64px + safe area padding */}
      <nav
-  className="fixed bottom-0 inset-x-0 z-40 bg-black border-t border-white/10"
-  style={{ height: 'calc(56px + var(--safe-bottom))' }}  // full bar to edge
+  className="fixed bottom-0 inset-x-0 z-40 bg-black border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
 >
-  <div
-    className="mx-auto max-w-xl flex items-center justify-between"
-    style={{
-      position: 'absolute',
-      left: 0, right: 0,
-      bottom: 'var(--safe-bottom)',
-      height: '56px'
-    }}
-  >
+  {/* Toolbar row: exactly 56px tall */}
+  <div className="mx-auto max-w-xl h-14 flex items-center justify-between">
     {NAV.map(({ id, icon, label }) => {
       const active = tab === id;
       return (
