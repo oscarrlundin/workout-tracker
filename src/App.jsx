@@ -235,7 +235,7 @@ export default function App() {
       <h1 className="text-2xl font-bold sr-only">Repped</h1>
 
       {/* Content gets EXACT padding for the nav (64px) + iOS safe area */}
-      <div className="mt-1 pb-[calc(64px+env(safe-area-inset-bottom))]">
+      <div className="mt-1 pb-[calc(56px+env(safe-area-inset-bottom))]">
         {tab === "Log" && (
           <LogTab useLiveQuery={useLiveQueryHook} showToast={showToast} />
         )}
@@ -254,27 +254,30 @@ export default function App() {
       <Toast message={toast} />
 
       {/* Fixed bottom nav: exact height 64px + safe area padding */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 border-t border-white/10 bg-black/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md safe-bottom">
-        <div className="mx-auto max-w-xl flex">
-          {NAV.map(({ id, icon, label }) => {
-            const active = tab === id;
-            return (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                aria-label={label}
-                aria-current={active ? "page" : undefined}
-                className="flex-1 py-2 flex items-center justify-center"
-              >
-                <Icon
-                  name={icon}
-                  className={`w-7 h-7 ${active ? "text-white" : "text-white/50"}`}
-                />
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+      <nav
+  className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-black"
+  style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+>
+  <div className="mx-auto max-w-xl h-14 flex items-center justify-between">
+    {NAV.map(({ id, icon, label }) => {
+      const active = tab === id;
+      return (
+        <button
+          key={id}
+          onClick={() => setTab(id)}
+          aria-label={label}
+          aria-current={active ? 'page' : undefined}
+          className="flex-1 py-2 flex items-center justify-center"
+        >
+          <Icon
+            name={icon}
+            className={`w-7 h-7 ${active ? 'text-white' : 'text-white/50'}`}
+          />
+        </button>
+      );
+    })}
+  </div>
+</nav>
     </div>
   );
 }
