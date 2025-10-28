@@ -763,22 +763,28 @@ function LogTab({ useLiveQuery, showToast }) {
 
   // Timer logic
   // Manual duration editing (MM:SS)
-const [durationEditing, setDurationEditing] = useState(false);
-const [durationDraft, setDurationDraft] = useState("00:00");
+  const [durationEditing, setDurationEditing] = useState(false);
+  const [durationDraft, setDurationDraft] = useState("00:00");
 
-// Keep the draft synced with DB value
-useEffect(() => {
-  const sec = Number(workout?.durationSec ?? 0);
-  setDurationDraft(formatMMSS(sec));
-}, [workout?.id, workout?.durationSec]);
+  // Keep the draft synced with DB value
+  useEffect(() => {
+    const sec = Number(workout?.durationSec ?? 0);
+    setDurationDraft(formatMMSS(sec));
+  }, [workout?.id, workout?.durationSec]);
 
-async function saveDuration() {
-  const wid = await ensureWorkout();
-  const parsed = parseMMSS(durationDraft);
-  const sec = parsed == null ? 0 : Math.max(0, Math.min(parsed, 24 * 60 * 60)); // clamp to 24h
-  await updateWorkoutMeta(wid, { durationSec: sec, startAt: null, endAt: null });
-  setDurationEditing(false);
-}
+  // Ensure a workout exists for this date
+  async function ensureWorkout() {
+    if (workoutId) return workoutId;
+    return await createWorkout(selectedDate);
+  }
+
+  async function saveDuration() {
+    const wid = await ensureWorkout();
+    const parsed = parseMMSS(durationDraft);
+    const sec = parsed == null ? 0 : Math.max(0, Math.min(parsed, 24 * 60 * 60)); // clamp to 24h
+    await updateWorkoutMeta(wid, { durationSec: sec, startAt: null, endAt: null });
+    setDurationEditing(false);
+  }
   async function setMood(v) {
     const wid = await ensureWorkout();
     await updateWorkoutMeta(wid, { mood: v });
@@ -940,54 +946,8 @@ const durationText = formatMMSS(durationSec);
             />
           )}
         </div>
-
-        {/* Stats row (kept as before) */}
-        <div className="mt-3 grid grid-cols-3 items-center text-center">
-          <div>
-            <div>
-  {!durationEditing ? (
-    <button
-      className="text-2xl font-semibold active:opacity-80"
-      onClick={() => setDurationEditing(true)}
-      aria-label="Edit duration"
-      title="Edit duration"
-    >
-      {durationText}
-    </button>
-  ) : (
-    <input
-      autoFocus
-      inputMode="numeric"
-      pattern="^\d{1,3}(:[0-5]\d)?$"
-      placeholder="MM:SS"
-      className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
-      value={durationDraft}
-      onChange={(e) => setDurationDraft(e.target.value)}
-      onBlur={saveDuration}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") saveDuration();
-        if (e.key === "Escape") {
-          setDurationEditing(false);
-          setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
-        }
-      }}
-    />
-  )}
-  <div className="text-xs text-white/60">Duration</div>
-</div>
-            <div className="text-2xl">{moodFace}</div>
-            <div className="text-xs text-white/60">Mood</div>
-            <div className="mt-1">
-              <MoodPicker value={moodValue} onChange={setMood} />
-            </div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold">{durationText}</div>
-            <div className="text-xs text-white/60">
-              {workout?.startAt && !workout?.endAt ? "Live" : "Duration"}
-            </div>
-          </div>
-        </div>
+        {/* Stats row (Exercises | Mood | Duration) */}
+        {/* (the correct stats row remains here, earlier duplicate removed) */}
       </div>
 
       {/* Floating Add Exercise button (bottom-center, above nav) */}
