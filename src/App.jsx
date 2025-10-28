@@ -845,7 +845,7 @@ function LogTab({ useLiveQuery, showToast }) {
             aria-label="Add Exercise"
             title="Add Exercise"
           >
-            <Icon name="plus" className="w-6 h-6 text-white" />
+            <Icon name="plus" className="w-6 h-6" />
           </button>
 
           <button onClick={() => setCalendarOpen(true)} className="p-2 rounded-xl active:opacity-80" aria-label="Calendar">
