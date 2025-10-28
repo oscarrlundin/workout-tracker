@@ -43,6 +43,9 @@ import {
   CartesianGrid,
 } from "recharts";
 
+import "./styles/fonts.css";
+
+
 // NEW: Icon wrapper for your custom SVGs (src/components/Icon.jsx)
 import Icon from "./components/Icon";
 
@@ -1061,7 +1064,7 @@ const durationText = formatMMSS(durationSec);
         <div className="mt-6 text-center">
           {!titleEditing ? (
             <button
-              className="text-4xl font-extrabold tracking-tight active:opacity-90"
+              className="text-4xl font-extrabold tracking-tight active:opacity-90 font-['NexaBlack']"
               onClick={() => setTitleEditing(true)}
             >
               {(workout?.title || "WORKOUT").toUpperCase()}
