@@ -896,13 +896,14 @@ function LogTab({ useLiveQuery, showToast }) {
   <Icon name="templates" className="w-7 h-7 text-white" />
 </button>
 
-          {/* Center + button */}
-          <button
+{/* Floating Add Exercise button (bottom-center, above nav) */}
+<button
   onClick={() => setAddOpen(true)}
-  className="p-3 bg-white text-black rounded-full active:scale-95 transition-transform"
   aria-label="Add Exercise"
+  className="fixed left-1/2 -translate-x-1/2 z-50 grid place-items-center w-14 h-14 rounded-full bg-white text-black shadow-xl border border-white/20 active:scale-95"
+  style={{ bottom: 'calc(56px + var(--safe-bottom) + 16px)' }} // nav(56px) + safe-area + gap
 >
-  <Icon name="plus" className="w-6 h-6 text-black" />
+  <Icon name="plus" className="w-7 h-7 text-black" />
 </button>
 
 
