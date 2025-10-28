@@ -1177,9 +1177,17 @@ const durationText = formatMMSS(durationSec);
                   </div>
                   <div className="flex gap-2 items-center">
                     <button onClick={() => handleAddSet(exId)} className="text-xs border rounded px-2 py-1 border-zinc-700">+ Set</button>
-                    <button onClick={() => toggleExpanded(exId)} className="text-white/60 text-sm w-6 text-center">
-                      {expanded[exId] ? "▲" : "▼"}
-                    </button>
+                   <button
+  onClick={() => toggleExpanded(exId)}
+  aria-label={expanded[exId] ? "Collapse" : "Expand"}
+  aria-expanded={!!expanded[exId]}
+  className="p-2"
+>
+  <Icon
+    name={expanded[exId] ? "chevron-up" : "chevron-down"}
+    className="w-5 h-5 text-white/60"
+  />
+</button>
                   </div>
                 </div>
 

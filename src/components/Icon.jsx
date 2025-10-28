@@ -13,6 +13,8 @@ import Mood2 from "../icons/mood-2.svg?react";
 import Mood3 from "../icons/mood-3.svg?react";
 import Mood4 from "../icons/mood-4.svg?react";
 import Mood5 from "../icons/mood-5.svg?react";
+import ChevronDown from "../icons/chevron-down.svg?react";
+import ChevronUp from "../icons/chevron-up.svg?react";
 
 const map = {
   calendar: CalendarIcon,
@@ -29,6 +31,8 @@ const map = {
   "mood-3": Mood3,
   "mood-4": Mood4,
   "mood-5": Mood5,
+  "chevron-down": ChevronDown,
+"chevron-up": ChevronUp,
 }
 
 export default function Icon({ name, className = '', ariaLabel }) {
