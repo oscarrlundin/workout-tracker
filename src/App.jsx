@@ -43,7 +43,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-import "./styles/fonts.css";
+import "./fonts.css";
 
 
 // NEW: Icon wrapper for your custom SVGs (src/components/Icon.jsx)
