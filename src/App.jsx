@@ -947,7 +947,55 @@ const durationText = formatMMSS(durationSec);
           )}
         </div>
         {/* Stats row (Exercises | Mood | Duration) */}
-        {/* (the correct stats row remains here, earlier duplicate removed) */}
+<div className="mt-3 grid grid-cols-3 items-center text-center">
+  {/* Exercises count */}
+  <div>
+    <div className="text-2xl font-semibold">{exerciseCount}</div>
+    <div className="text-xs text-white/60">Exercises</div>
+  </div>
+
+  {/* Mood */}
+  <div>
+    <div className="text-2xl">{moodFace}</div>
+    <div className="text-xs text-white/60">Mood</div>
+    <div className="mt-1">
+      <MoodPicker value={moodValue} onChange={setMood} />
+    </div>
+  </div>
+
+  {/* Duration (tap to edit MM:SS) */}
+  <div>
+    {!durationEditing ? (
+      <button
+        className="text-2xl font-semibold active:opacity-80"
+        onClick={() => setDurationEditing(true)}
+        aria-label="Edit duration"
+        title="Edit duration"
+      >
+        {durationText}
+      </button>
+    ) : (
+      <input
+        autoFocus
+        inputMode="numeric"
+        pattern="^\\d{1,3}(:[0-5]\\d)?$"
+        placeholder="MM:SS"
+        className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
+        value={durationDraft}
+        onChange={(e) => setDurationDraft(e.target.value)}
+        onBlur={saveDuration}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") saveDuration();
+          if (e.key === "Escape") {
+            setDurationEditing(false);
+            setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
+          }
+        }}
+      />
+    )}
+    <div className="text-xs text-white/60">Duration</div>
+  </div>
+</div>
       </div>
 
       {/* Floating Add Exercise button (bottom-center, above nav) */}
