@@ -893,23 +893,11 @@ function LogTab({ useLiveQuery, showToast }) {
       <div className="sticky top-0 bg-black pb-3 safe-top">
         <div className="flex items-center justify-between pt-2">
           <button onClick={() => setTemplatesOpen(true)} className="p-2" aria-label="Templates">
-  <Icon name="templates" className="w-7 h-7 text-white" />
-</button>
-
-{/* Floating Add Exercise button (bottom-center, above nav) */}
-<button
-  onClick={() => setAddOpen(true)}
-  aria-label="Add Exercise"
-  className="fixed left-1/2 -translate-x-1/2 z-50 grid place-items-center w-14 h-14 rounded-full bg-white text-black shadow-xl border border-white/20 active:scale-95"
-  style={{ bottom: 'calc(56px + var(--safe-bottom) + 16px)' }} // nav(56px) + safe-area + gap
->
-  <Icon name="plus" className="w-7 h-7 text-black" />
-</button>
-
-
+            <Icon name="templates" className="w-7 h-7 text-white" />
+          </button>
           <button onClick={() => setCalendarOpen(true)} className="p-2" aria-label="Calendar">
-  <Icon name="calendar" className="w-7 h-7 text-white" />
-</button>
+            <Icon name="calendar" className="w-7 h-7 text-white" />
+          </button>
         </div>
 
         {/* Title + date */}
@@ -966,6 +954,16 @@ function LogTab({ useLiveQuery, showToast }) {
           </div>
         </div>
       </div>
+
+      {/* Floating Add Exercise button (bottom-center, above nav) */}
+      <button
+        onClick={() => setAddOpen(true)}
+        aria-label="Add Exercise"
+        className="fixed left-1/2 -translate-x-1/2 z-50 grid place-items-center w-14 h-14 rounded-full bg-white text-black shadow-xl border border-white/20 active:scale-95"
+        style={{ bottom: 'calc(56px + env(safe-area-inset-bottom) + 16px)' }} // nav(56px) + safe-area + gap
+      >
+        <Icon name="plus" className="w-7 h-7 text-black" />
+      </button>
 
       {/* Grouped exercises (unchanged) */}
       <div className="mt-4 space-y-3">
