@@ -154,11 +154,11 @@ function Modal({ open, onClose, title, children }) {
 }
 
 const MOOD = [
-  { v: 1, glyph: "😖", label: "Horrible" },
-  { v: 2, glyph: "😕", label: "Bad" },
-  { v: 3, glyph: "😐", label: "Okay" },
-  { v: 4, glyph: "🙂", label: "Good" },
-  { v: 5, glyph: "😄", label: "Great" },
+  { v: 1, id: "mood-1", glyph: "😖", label: "Horrible" },
+  { v: 2, id: "mood-2", glyph: "😕", label: "Bad" },
+  { v: 3, id: "mood-3", glyph: "😐", label: "Okay" },
+  { v: 4, id: "mood-4", glyph: "🙂", label: "Good" },
+  { v: 5, id: "mood-5", glyph: "😄", label: "Great" },
 ];
 
 function MoodPicker({ value = 3, onChange }) {
@@ -771,6 +771,7 @@ function LogTab({ useLiveQuery, showToast }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);               // ⬅️ NEW: Quick Add modal
+  const [moodOpen, setMoodOpen] = useState(false);             // Mood picker modal state
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(workout?.title ?? "");
   useEffect(() => {
@@ -964,6 +965,7 @@ const durationText = formatMMSS(durationSec);
           )}
         </div>
         {/* Stats row (Exercises | Mood | Duration) */}
+
 <div className="mt-3 grid grid-cols-3 items-center text-center">
   {/* Exercises count */}
   <div>
@@ -973,11 +975,15 @@ const durationText = formatMMSS(durationSec);
 
   {/* Mood */}
   <div>
-    <div className="text-2xl">{moodFace}</div>
+    <button
+      onClick={() => setMoodOpen(true)}
+      className="text-2xl active:opacity-80"
+      aria-label="Edit mood"
+      title="Edit mood"
+    >
+      {moodFace}
+    </button>
     <div className="text-xs text-white/60">Mood</div>
-    <div className="mt-1">
-      <MoodPicker value={moodValue} onChange={setMood} />
-    </div>
   </div>
 
   {/* Duration (tap to edit MM:SS) */}
@@ -993,24 +999,23 @@ const durationText = formatMMSS(durationSec);
       </button>
     ) : (
       <input
-  autoFocus
-  inputMode="numeric"
-  pattern="^(\d{1,4}|\d{1,3}:[0-5]\d)$" // allow 1–4 digits or MM:SS
-  maxLength={5}                          // e.g., "2555" or "25:55"
-  placeholder="MM:SS"
-  className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
-  value={durationDraft}
-  onChange={(e) => setDurationDraft(e.target.value.replace(/[^\d:]/g, ""))}
-  onBlur={saveDuration}
-  onKeyDown={(e) => {
-    if (e.key === "Enter") saveDuration();
-    if (e.key === "Escape") {
-      setDurationEditing(false);
-      setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
-    }
-  }}
-/>
-
+        autoFocus
+        inputMode="numeric"
+        pattern="^(\d{1,4}|\d{1,3}:[0-5]\d)$" // allow 1–4 digits or MM:SS
+        maxLength={5}                          // e.g., "2555" or "25:55"
+        placeholder="MM:SS"
+        className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
+        value={durationDraft}
+        onChange={(e) => setDurationDraft(e.target.value.replace(/[^\d:]/g, ""))}
+        onBlur={saveDuration}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") saveDuration();
+          if (e.key === "Escape") {
+            setDurationEditing(false);
+            setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
+          }
+        }}
+      />
     )}
     <div className="text-xs text-white/60">Duration</div>
   </div>
@@ -1224,6 +1229,31 @@ const durationText = formatMMSS(durationSec);
             Add to Workout
           </button>
         </form>
+      </Modal>
+
+      {/* Mood picker modal (uses emojis for now; swap to SVGs later) */}
+      <Modal open={moodOpen} onClose={() => setMoodOpen(false)} title="How did it feel?">
+        <div className="mt-1 grid grid-cols-5 gap-2 place-items-center">
+          {MOOD.map((m) => (
+            <button
+              key={m.v}
+              onClick={async () => {
+                await setMood(m.v);
+                setMoodOpen(false);
+              }}
+              className={`w-12 h-12 grid place-items-center rounded-full border ${
+                m.v === moodValue ? "bg-white/10 border-white/30" : "bg-zinc-900 border-white/10"
+              }`}
+              aria-label={m.label}
+              title={m.label}
+            >
+              <span className="text-2xl leading-none">{m.glyph}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 text-center text-xs text-white/60">
+          Tap a face to set your mood.
+        </div>
       </Modal>
     </div>
   );
