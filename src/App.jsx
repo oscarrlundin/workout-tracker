@@ -107,13 +107,30 @@ function formatMMSS(total) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 // Parse "MM:SS" (or "M:SS") into total seconds; returns null on bad input
+// Parse "MM:SS" OR compact digits like "2555" => 25:55 (also handles carry like "90" => 1:30)
 function parseMMSS(str) {
   if (!str || typeof str !== "string") return null;
-  const m = str.trim().match(/^(\d{1,3})(?::([0-5]?\d))?$/);
-  if (!m) return null;
-  const minutes = Number(m[1] || 0);
-  const seconds = Number(m[2] || 0);
-  return minutes * 60 + seconds;
+  const t = str.trim();
+
+  // Case 1: explicit MM:SS
+  if (/^\d{1,3}:[0-5]\d$/.test(t)) {
+    const [m, s] = t.split(":");
+    return Number(m) * 60 + Number(s);
+  }
+
+  // Case 2: compact digits (1–4 digits)
+  if (/^\d{1,4}$/.test(t)) {
+    // last two digits are seconds, the rest are minutes
+    const sec = Number(t.slice(-2));
+    const min = Number(t.slice(0, -2) || "0");
+    // allow carry if seconds >= 60 (e.g., "90" -> 1:30)
+    const total = min * 60 + sec;
+    const carryM = Math.floor(total / 60);
+    const carryS = total % 60;
+    return carryM * 60 + carryS;
+  }
+
+  return null; // bad input
 }
 
 function Modal({ open, onClose, title, children }) {
@@ -976,22 +993,24 @@ const durationText = formatMMSS(durationSec);
       </button>
     ) : (
       <input
-        autoFocus
-        inputMode="numeric"
-        pattern="^\\d{1,3}(:[0-5]\\d)?$"
-        placeholder="MM:SS"
-        className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
-        value={durationDraft}
-        onChange={(e) => setDurationDraft(e.target.value)}
-        onBlur={saveDuration}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") saveDuration();
-          if (e.key === "Escape") {
-            setDurationEditing(false);
-            setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
-          }
-        }}
-      />
+  autoFocus
+  inputMode="numeric"
+  pattern="^(\d{1,4}|\d{1,3}:[0-5]\d)$" // allow 1–4 digits or MM:SS
+  maxLength={5}                          // e.g., "2555" or "25:55"
+  placeholder="MM:SS"
+  className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
+  value={durationDraft}
+  onChange={(e) => setDurationDraft(e.target.value.replace(/[^\d:]/g, ""))}
+  onBlur={saveDuration}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") saveDuration();
+    if (e.key === "Escape") {
+      setDurationEditing(false);
+      setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
+    }
+  }}
+/>
+
     )}
     <div className="text-xs text-white/60">Duration</div>
   </div>
