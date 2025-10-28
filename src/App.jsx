@@ -256,9 +256,13 @@ export default function App() {
       {/* Fixed bottom nav: exact height 64px + safe area padding */}
       <nav
   className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-black"
-  style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+  style={{ height: 'calc(56px + env(safe-area-inset-bottom))' }}  // full bar height
 >
-  <div className="mx-auto max-w-xl h-14 flex items-center justify-between">
+  {/* icon row: exactly 56px tall, anchored just above the home indicator */}
+  <div
+    className="mx-auto max-w-xl flex items-center justify-between"
+    style={{ position: 'absolute', left: 0, right: 0, bottom: 'env(safe-area-inset-bottom)', height: '56px' }}
+  >
     {NAV.map(({ id, icon, label }) => {
       const active = tab === id;
       return (
@@ -267,7 +271,7 @@ export default function App() {
           onClick={() => setTab(id)}
           aria-label={label}
           aria-current={active ? 'page' : undefined}
-          className="flex-1 py-2 flex items-center justify-center"
+          className="flex-1 flex items-center justify-center"
         >
           <Icon
             name={icon}
