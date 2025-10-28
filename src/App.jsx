@@ -720,11 +720,12 @@ function TemplatesTab({ useLiveQuery }) {
   );
 }
 
-// ---------- Swipeable Row (Step 1: drag only, no delete) ----------
-function SwipeRow({ children }) {
+// ---------- Swipeable Row (Step 2: delete threshold + reveal background) ----------
+function SwipeRow({ children, onDelete }) {
   const [dx, setDx] = useState(0);           // current horizontal offset
   const [anim, setAnim] = useState(false);   // animate on release
   const start = useRef({ x: 0, y: 0, active: false, locked: false }); // gesture state
+  const THRESH = 96; // px you must exceed (to the left) to delete
 
   function isFormControl(el) {
     if (!el) return false;
@@ -768,17 +769,53 @@ function SwipeRow({ children }) {
     setDx(next);
   };
 
-  const onPointerUp = (e) => {
+  const onPointerUp = () => {
+    const commitDelete = dx <= -THRESH;
     start.current.active = false;
     start.current.locked = false;
-    setAnim(true);
-    setDx(0); // snap back for Step 1
+
+    if (commitDelete) {
+      // slide out and then call onDelete
+      setAnim(true);
+      // move far left for a nice dismiss
+      setDx(-window.innerWidth);
+      setTimeout(() => {
+        try {
+          onDelete && onDelete();
+        } finally {
+          // reset position in case the row re-renders in place
+          setDx(0);
+          setAnim(false);
+        }
+      }, 160);
+    } else {
+      // snap back
+      setAnim(true);
+      setDx(0);
+    }
   };
+
+  // progress (0..1) for background reveal
+  const p = Math.min(1, Math.max(0, -dx / THRESH));
 
   return (
     <div className="relative overflow-hidden rounded-xl">
-      {/* Background layer (will become delete area in step 2) */}
-      <div className="absolute inset-0 bg-red-600/0 pointer-events-none" />
+      {/* Background layer (reveals as you drag left) */}
+      <div
+        className="absolute inset-0 flex items-center justify-end pr-4 select-none"
+        style={{
+          backgroundColor: `rgba(220, 38, 38, ${0.1 + 0.35 * p})`, // red-600-ish with fade
+          pointerEvents: 'none',
+        }}
+      >
+        <div
+          className="text-white font-medium"
+          style={{ opacity: 0.35 + 0.65 * p, transform: `translateX(${(-8 + 8 * (1 - p))}px)` }}
+        >
+          Delete
+        </div>
+      </div>
+
       {/* Foreground card */}
       <div
         className="rounded-xl touch-pan-y select-none"
@@ -1131,17 +1168,15 @@ const durationText = formatMMSS(durationSec);
           const suffix = isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
 
           return (
-            <SwipeRow key={exId}>
+            <SwipeRow key={exId} onDelete={() => handleDeleteExercise(Number(exId))}>
               <div className="rounded-xl bg-[#343434]">
                 <div className="flex justify-between items-center p-3">
-                  {/** existing header content **/}
                   <div onClick={() => toggleExpanded(exId)} className="flex-1 text-left">
                     <div className="font-medium">{exercise.name}</div>
                     <div className="text-sm text-white/60">{summary}{suffix}</div>
                   </div>
                   <div className="flex gap-2 items-center">
                     <button onClick={() => handleAddSet(exId)} className="text-xs border rounded px-2 py-1 border-zinc-700">+ Set</button>
-                    <button onClick={() => handleDeleteExercise(Number(exId))} className="text-xs border rounded px-2 py-1 border-zinc-700">🗑</button>
                     <button onClick={() => toggleExpanded(exId)} className="text-white/60 text-sm w-6 text-center">
                       {expanded[exId] ? "▲" : "▼"}
                     </button>
