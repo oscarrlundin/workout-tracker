@@ -1054,7 +1054,7 @@ const durationText = formatMMSS(durationSec);
           const suffix = isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
 
           return (
-            <div key={exId} className="border border-zinc-800 rounded-xl bg-zinc-900">
+            <div key={exId} className="rounded-xl bg-[#343434]">
               <div className="flex justify-between items-center p-3">
                 <div onClick={() => toggleExpanded(exId)} className="flex-1 text-left">
                   <div className="font-medium">{exercise.name}</div>
