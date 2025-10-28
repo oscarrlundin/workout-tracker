@@ -1058,7 +1058,7 @@ const durationText = formatMMSS(durationSec);
         </div>
 
         {/* Big title (separate from the date) */}
-        <div className="mt-1 text-center">
+        <div className="mt-5 text-center">
           {!titleEditing ? (
             <button
               className="text-4xl font-extrabold tracking-tight active:opacity-90"
