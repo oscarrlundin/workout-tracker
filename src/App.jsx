@@ -1080,7 +1080,7 @@ const durationText = formatMMSS(durationSec);
         </div>
         {/* Stats row (Exercises | Mood | Duration) */}
 
-<div className="mt-3 grid grid-cols-3 items-center text-center">
+<div className="mt-6 grid grid-cols-3 items-center text-center">
   {/* Exercises count */}
   <div>
     <div className="text-2xl font-semibold">{exerciseCount}</div>
