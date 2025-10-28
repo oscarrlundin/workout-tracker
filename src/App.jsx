@@ -1176,18 +1176,17 @@ const durationText = formatMMSS(durationSec);
                     <div className="text-sm text-white/60">{summary}{suffix}</div>
                   </div>
                   <div className="flex gap-2 items-center">
-                    <button onClick={() => handleAddSet(exId)} className="text-xs border rounded px-2 py-1 border-zinc-700">+ Set</button>
-                   <button
-  onClick={() => toggleExpanded(exId)}
-  aria-label={expanded[exId] ? "Collapse" : "Expand"}
-  aria-expanded={!!expanded[exId]}
-  className="p-2"
->
-  <Icon
-    name={expanded[exId] ? "chevron-up" : "chevron-down"}
-    className="w-5 h-5 text-white"
-  />
-</button>
+                    <button
+                      onClick={() => toggleExpanded(exId)}
+                      aria-label={expanded[exId] ? "Collapse" : "Expand"}
+                      aria-expanded={!!expanded[exId]}
+                      className="p-2"
+                    >
+                      <Icon
+                        name={expanded[exId] ? "chevron-up" : "chevron-down"}
+                        className="w-5 h-5 text-white"
+                      />
+                    </button>
                   </div>
                 </div>
 
@@ -1245,6 +1244,23 @@ const durationText = formatMMSS(durationSec);
                         ))}
                       </tbody>
                     </table>
+
+                    {/* Footer add-set row */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Add set"
+                      className="mt-2 h-12 -mx-3 px-3 grid place-items-center border-t border-white/10 rounded-b-xl active:scale-[0.99] select-none"
+                      onClick={() => handleAddSet(exId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleAddSet(exId);
+                        }
+                      }}
+                    >
+                      <Icon name="plus" className="w-6 h-6 text-white" />
+                    </div>
                   </div>
                 )}
               </div>
