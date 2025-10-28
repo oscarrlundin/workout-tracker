@@ -834,23 +834,23 @@ function LogTab({ useLiveQuery, showToast }) {
       {/* HEADER */}
       <div className="sticky top-0 bg-black pb-3 safe-top">
         <div className="flex items-center justify-between pt-2">
-          <button onClick={() => setTemplatesOpen(true)} className="p-2 rounded-xl active:opacity-80" aria-label="Templates">
-            <Icon name="templates" className="w-7 h-7 text-white/90" />
-          </button>
+          <button onClick={() => setTemplatesOpen(true)} className="p-2" aria-label="Templates">
+  <Icon name="templates" className="w-7 h-7 text-white" />
+</button>
 
           {/* Center + button */}
           <button
-            onClick={() => setAddOpen(true)}
-            className="p-3 bg-white text-black rounded-full active:scale-95 transition-transform"
-            aria-label="Add Exercise"
-            title="Add Exercise"
-          >
-            <Icon name="plus" className="w-6 h-6" />
-          </button>
+  onClick={() => setAddOpen(true)}
+  className="p-3 bg-white text-black rounded-full active:scale-95 transition-transform"
+  aria-label="Add Exercise"
+>
+  <Icon name="plus" className="w-6 h-6 text-black" />
+</button>
 
-          <button onClick={() => setCalendarOpen(true)} className="p-2 rounded-xl active:opacity-80" aria-label="Calendar">
-            <Icon name="calendar" className="w-7 h-7 text-white/90" />
-          </button>
+
+          <button onClick={() => setCalendarOpen(true)} className="p-2" aria-label="Calendar">
+  <Icon name="calendar" className="w-7 h-7 text-white" />
+</button>
         </div>
 
         {/* Title + date */}
