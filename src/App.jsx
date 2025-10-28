@@ -106,6 +106,15 @@ function formatMMSS(total) {
   const s = total % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
+// Parse "MM:SS" (or "M:SS") into total seconds; returns null on bad input
+function parseMMSS(str) {
+  if (!str || typeof str !== "string") return null;
+  const m = str.trim().match(/^(\d{1,3})(?::([0-5]?\d))?$/);
+  if (!m) return null;
+  const minutes = Number(m[1] || 0);
+  const seconds = Number(m[2] || 0);
+  return minutes * 60 + seconds;
+}
 
 function Modal({ open, onClose, title, children }) {
   if (!open) return null;
@@ -753,44 +762,23 @@ function LogTab({ useLiveQuery, showToast }) {
   }, [workout?.id]);
 
   // Timer logic
-  const [nowTick, setNowTick] = useState(Date.now());
-  useEffect(() => {
-    let t;
-    if (workout?.startAt && !workout?.endAt) t = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [workout?.startAt, workout?.endAt]);
+  // Manual duration editing (MM:SS)
+const [durationEditing, setDurationEditing] = useState(false);
+const [durationDraft, setDurationDraft] = useState("00:00");
 
-  function computedDurationSec() {
-    if (!workout) return 0;
-    if (workout.durationSec != null) return workout.durationSec;
-    if (workout.startAt && !workout.endAt) {
-      const start = new Date(workout.startAt).getTime();
-      return Math.max(0, Math.floor((nowTick - start) / 1000));
-    }
-    if (workout.startAt && workout.endAt) {
-      const s = new Date(workout.startAt).getTime();
-      const e = new Date(workout.endAt).getTime();
-      return Math.max(0, Math.floor((e - s) / 1000));
-    }
-    return 0;
-  }
+// Keep the draft synced with DB value
+useEffect(() => {
+  const sec = Number(workout?.durationSec ?? 0);
+  setDurationDraft(formatMMSS(sec));
+}, [workout?.id, workout?.durationSec]);
 
-  async function ensureWorkout() {
-    if (workoutId) return workoutId;
-    return await createWorkout(selectedDate);
-  }
-  async function handleStartTimer() {
-    const wid = await ensureWorkout();
-    await updateWorkoutMeta(wid, { startAt: new Date().toISOString(), endAt: null, durationSec: null });
-  }
-  async function handleStopTimer() {
-    const wid = await ensureWorkout();
-    const current = await getWorkoutByDate(selectedDate);
-    const startAt = current?.startAt ? new Date(current.startAt).getTime() : Date.now();
-    const endAt = Date.now();
-    const dur = Math.max(0, Math.floor((endAt - startAt) / 1000));
-    await updateWorkoutMeta(wid, { endAt: new Date(endAt).toISOString(), durationSec: dur });
-  }
+async function saveDuration() {
+  const wid = await ensureWorkout();
+  const parsed = parseMMSS(durationDraft);
+  const sec = parsed == null ? 0 : Math.max(0, Math.min(parsed, 24 * 60 * 60)); // clamp to 24h
+  await updateWorkoutMeta(wid, { durationSec: sec, startAt: null, endAt: null });
+  setDurationEditing(false);
+}
   async function setMood(v) {
     const wid = await ensureWorkout();
     await updateWorkoutMeta(wid, { mood: v });
@@ -883,7 +871,8 @@ function LogTab({ useLiveQuery, showToast }) {
     return grouped;
   }, [sets]);
   const exerciseCount = Object.keys(groupedSets).length;
-  const durationText = formatMMSS(computedDurationSec());
+  const durationSec = Number(workout?.durationSec ?? 0);
+const durationText = formatMMSS(durationSec);
   const moodValue = Number(workout?.mood ?? 3);
   const moodFace = MOOD.find(m => m.v === moodValue)?.glyph ?? "😐";
 
@@ -955,10 +944,37 @@ function LogTab({ useLiveQuery, showToast }) {
         {/* Stats row (kept as before) */}
         <div className="mt-3 grid grid-cols-3 items-center text-center">
           <div>
-            <div className="text-2xl font-semibold">{exerciseCount}</div>
-            <div className="text-xs text-white/60">Exercises</div>
-          </div>
-          <div>
+            <div>
+  {!durationEditing ? (
+    <button
+      className="text-2xl font-semibold active:opacity-80"
+      onClick={() => setDurationEditing(true)}
+      aria-label="Edit duration"
+      title="Edit duration"
+    >
+      {durationText}
+    </button>
+  ) : (
+    <input
+      autoFocus
+      inputMode="numeric"
+      pattern="^\d{1,3}(:[0-5]\d)?$"
+      placeholder="MM:SS"
+      className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
+      value={durationDraft}
+      onChange={(e) => setDurationDraft(e.target.value)}
+      onBlur={saveDuration}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") saveDuration();
+        if (e.key === "Escape") {
+          setDurationEditing(false);
+          setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
+        }
+      }}
+    />
+  )}
+  <div className="text-xs text-white/60">Duration</div>
+</div>
             <div className="text-2xl">{moodFace}</div>
             <div className="text-xs text-white/60">Mood</div>
             <div className="mt-1">
