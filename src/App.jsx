@@ -891,34 +891,46 @@ function LogTab({ useLiveQuery, showToast }) {
     <div className="text-white">
       {/* HEADER */}
       <div className="sticky top-0 bg-black pb-3 safe-top">
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center justify-start pt-2">
           <button onClick={() => setTemplatesOpen(true)} className="p-2" aria-label="Templates">
             <Icon name="templates" className="w-7 h-7 text-white" />
           </button>
-          <button onClick={() => setCalendarOpen(true)} className="p-2" aria-label="Calendar">
-            <Icon name="calendar" className="w-7 h-7 text-white" />
-          </button>
         </div>
 
-        {/* Title + date */}
+        {/* Date (centered, clickable) + Title */}
         <div className="flex-1 text-center mt-3">
-          {!titleEditing ? (
-            <button className="text-3xl font-extrabold tracking-tight active:opacity-90" onClick={() => setTitleEditing(true)}>
-              {(workout?.title || "WORKOUT").toUpperCase()}
-            </button>
-          ) : (
-            <input
-              autoFocus
-              className="bg-transparent border-b border-white/30 text-3xl font-extrabold text-center outline-none"
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={saveTitle}
-              onKeyDown={(e) => e.key === "Enter" && saveTitle()}
-              placeholder="Name your workout"
-            />
-          )}
-          <div className="text-sm text-white/60 mt-1">
-            {new Date(selectedDate).toLocaleDateString()}
+          <button
+            onClick={() => setCalendarOpen(true)}
+            className="text-lg font-semibold tracking-tight active:opacity-80"
+            aria-label="Change date"
+            title="Change date"
+          >
+            {new Date(selectedDate).toLocaleDateString(undefined, {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            })}
+          </button>
+
+          <div className="mt-1">
+            {!titleEditing ? (
+              <button
+                className="text-2xl font-extrabold tracking-tight active:opacity-90"
+                onClick={() => setTitleEditing(true)}
+              >
+                {(workout?.title || "WORKOUT").toUpperCase()}
+              </button>
+            ) : (
+              <input
+                autoFocus
+                className="bg-transparent border-b border-white/30 text-2xl font-extrabold text-center outline-none"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={saveTitle}
+                onKeyDown={(e) => e.key === "Enter" && saveTitle()}
+                placeholder="Name your workout"
+              />
+            )}
           </div>
         </div>
 
