@@ -897,11 +897,11 @@ function LogTab({ useLiveQuery, showToast }) {
           </button>
         </div>
 
-        {/* Date (centered, clickable) + Title */}
-        <div className="flex-1 text-center mt-3">
+        {/* Date (bold, uppercase, top-aligned) + Title */}
+        <div className="text-center mt-2">
           <button
             onClick={() => setCalendarOpen(true)}
-            className="text-lg font-semibold tracking-tight active:opacity-80"
+            className="text-base font-extrabold uppercase tracking-wide active:opacity-80"
             aria-label="Change date"
             title="Change date"
           >
@@ -909,13 +909,13 @@ function LogTab({ useLiveQuery, showToast }) {
               weekday: 'short',
               day: 'numeric',
               month: 'short',
-            })}
+            }).toUpperCase()}
           </button>
 
           <div className="mt-1">
             {!titleEditing ? (
               <button
-                className="text-2xl font-extrabold tracking-tight active:opacity-90"
+                className="text-3xl font-extrabold tracking-tight active:opacity-90"
                 onClick={() => setTitleEditing(true)}
               >
                 {(workout?.title || "WORKOUT").toUpperCase()}
@@ -923,11 +923,11 @@ function LogTab({ useLiveQuery, showToast }) {
             ) : (
               <input
                 autoFocus
-                className="bg-transparent border-b border-white/30 text-2xl font-extrabold text-center outline-none"
+                className="bg-transparent border-b border-white/30 text-3xl font-extrabold text-center outline-none"
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value)}
                 onBlur={saveTitle}
-                onKeyDown={(e) => e.key === "Enter" && saveTitle()}
+                onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
                 placeholder="Name your workout"
               />
             )}
