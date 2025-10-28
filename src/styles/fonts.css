@@ -1,0 +1,55 @@
+/* Nexa Font Family */
+
+/* Regular */
+@font-face {
+  font-family: "Nexa";
+  src: url("/src/assets/fonts/NexaRegular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Thin */
+@font-face {
+  font-family: "Nexa";
+  src: url("/src/assets/fonts/NexaThin.woff2") format("woff2");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Light Italic */
+@font-face {
+  font-family: "Nexa";
+  src: url("/src/assets/fonts/NexaLightItalic.woff2") format("woff2");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Extra Light */
+@font-face {
+  font-family: "Nexa";
+  src: url("/src/assets/fonts/NexaExtraLight.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Black (for titles) */
+@font-face {
+  font-family: "Nexa";
+  src: url("/src/assets/fonts/NexaBlack.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Extra Bold Italic */
+@font-face {
+  font-family: "Nexa";
+  src: url("/src/assets/fonts/NexaExtraBoldItalic.woff2") format("woff2");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}

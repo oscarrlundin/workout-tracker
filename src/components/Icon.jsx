@@ -1,7 +1,6 @@
 // src/components/Icon.jsx
 import CalendarIcon     from '@/icons/calendar.svg?react'
 import TemplatesIcon    from '@/icons/templates.svg?react'
-import ChevronDownIcon  from '@/icons/chevron-down.svg?react'
 import PlusIcon         from '@/icons/plus.svg?react'
 import HomeIcon       from '@/icons/home.svg?react'
 import TrendingUpIcon from '@/icons/trending-up.svg?react'
@@ -19,7 +18,6 @@ import ChevronUp from "../icons/chevron-up.svg?react";
 const map = {
   calendar: CalendarIcon,
   templates: TemplatesIcon,
-  'chevron-down': ChevronDownIcon,
   plus: PlusIcon,
   home: HomeIcon,
   progress: TrendingUpIcon,
