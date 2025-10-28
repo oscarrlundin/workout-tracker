@@ -1185,7 +1185,7 @@ const durationText = formatMMSS(durationSec);
 >
   <Icon
     name={expanded[exId] ? "chevron-up" : "chevron-down"}
-    className="w-5 h-5 text-white/60"
+    className="w-5 h-5 text-white"
   />
 </button>
                   </div>
