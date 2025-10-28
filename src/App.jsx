@@ -193,7 +193,6 @@ function BottomNav({ currentTab, setCurrentTab }) {
   );
 }
 /* ---------- Main App ---------- */
-/* ---------- Main App ---------- */
 export default function App() {
   const [tab, setTab] = useState("Log");
   const [toast, setToast] = useState("");
@@ -231,8 +230,9 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-[100svh] max-w-xl mx-auto px-4 bg-black text-white">
-      <div style={{ height: 'env(safe-area-inset-top)' }} />
+   <div className="min-h-[100dvh] max-w-xl mx-auto px-4 bg-black text-white">
+  {/* top notch spacer */}
+  <div style={{ height: 'var(--safe-top)' }} />
       <h1 className="text-2xl font-bold sr-only">Repped</h1>
 
       {/* Content gets EXACT padding for the nav (64px) + iOS safe area */}
@@ -257,11 +257,16 @@ export default function App() {
       {/* Fixed bottom nav: exact height 64px + safe area padding */}
      <nav
   className="fixed bottom-0 inset-x-0 z-40 bg-black border-t border-white/10"
-  style={{ height: 'calc(56px + env(safe-area-inset-bottom))' }}
+  style={{ height: 'calc(56px + var(--safe-bottom))' }}  // full bar to edge
 >
   <div
     className="mx-auto max-w-xl flex items-center justify-between"
-    style={{ position: 'absolute', left: 0, right: 0, bottom: 'env(safe-area-inset-bottom)', height: '56px' }}
+    style={{
+      position: 'absolute',
+      left: 0, right: 0,
+      bottom: 'var(--safe-bottom)',
+      height: '56px'
+    }}
   >
     {NAV.map(({ id, icon, label }) => {
       const active = tab === id;

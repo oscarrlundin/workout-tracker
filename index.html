@@ -18,17 +18,29 @@
     <link rel="manifest" href="manifest.webmanifest" />
 
     <!-- 🔧 iOS overscroll + safe-area fixes -->
-    <style>
-      html, body, #root { height: 100%; background: #000; }
-      /* Avoid showing white rubber-band background on iOS */
-      body { margin: 0; overscroll-behavior: none; }
-      /* Optional: tell the browser we're dark for form controls, etc. */
-      :root { color-scheme: dark; }
+    <!-- inside <head> … -->
+<style>
+  html, body, #root { height: 100%; background: #000; }
+  body { margin: 0; overscroll-behavior: none; }
+  :root { color-scheme: dark; }
 
-      /* Utility classes used in the app for safe areas */
-      .safe-top { padding-top: env(safe-area-inset-top); }
-      .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-    </style>
+  /* Safe-area variables with old iOS fallback */
+  :root{
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+  }
+  @supports (padding: max(0px)) {
+    :root{
+      --safe-top: max(env(safe-area-inset-top), constant(safe-area-inset-top));
+      --safe-bottom: max(env(safe-area-inset-bottom), constant(safe-area-inset-bottom));
+    }
+  }
+
+  /* Ensure the app fills the *dynamic* viewport on iOS */
+  #root {
+    min-height: 100dvh;           /* ✅ key line */
+  }
+</style>
 
     <title>Repped</title>
   </head>
