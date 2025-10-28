@@ -193,6 +193,7 @@ function BottomNav({ currentTab, setCurrentTab }) {
   );
 }
 /* ---------- Main App ---------- */
+/* ---------- Main App ---------- */
 export default function App() {
   const [tab, setTab] = useState("Log");
   const [toast, setToast] = useState("");
@@ -220,18 +221,21 @@ export default function App() {
       </div>
     );
   }
-const NAV = [
-  { id: "Log",       icon: "home",      label: "Log" },
-  { id: "Progress",  icon: "progress",  label: "Progress" },
-  { id: "Exercises", icon: "exercises", label: "Exercises" },
-  { id: "Templates", icon: "grid",      label: "Templates" },
-  { id: "Settings",  icon: "settings",  label: "Settings" },
-];
+
+  const NAV = [
+    { id: "Log",       icon: "home",      label: "Log" },
+    { id: "Progress",  icon: "progress",  label: "Progress" },
+    { id: "Exercises", icon: "exercises", label: "Exercises" },
+    { id: "Templates", icon: "grid",      label: "Templates" },
+    { id: "Settings",  icon: "settings",  label: "Settings" },
+  ];
+
   return (
-    <div className="min-h-[100svh] max-w-xl mx-auto p-4 safe-top safe-bottom bg-black text-white">
+    <div className="min-h-[100svh] max-w-xl mx-auto p-4 safe-top bg-black text-white">
       <h1 className="text-2xl font-bold sr-only">Repped</h1>
 
-      <div className="mt-1 pb-24">
+      {/* Content gets EXACT padding for the nav (64px) + iOS safe area */}
+      <div className="mt-1 pb-[calc(64px+env(safe-area-inset-bottom))]">
         {tab === "Log" && (
           <LogTab useLiveQuery={useLiveQueryHook} showToast={showToast} />
         )}
@@ -249,27 +253,28 @@ const NAV = [
 
       <Toast message={toast} />
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-black/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md safe-bottom">
-  <div className="mx-auto max-w-xl flex">
-    {NAV.map(({ id, icon, label }) => {
-      const active = tab === id;
-      return (
-        <button
-          key={id}
-          onClick={() => setTab(id)}
-          aria-label={label}
-          aria-current={active ? "page" : undefined}
-          className="flex-1 py-2 flex items-center justify-center"
-        >
-          <Icon
-            name={icon}
-            className={`w-7 h-7 ${active ? "text-white" : "text-white/50"}`}
-          />
-        </button>
-      );
-    })}
-  </div>
-</nav>
+      {/* Fixed bottom nav: exact height 64px + safe area padding */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 h-16 border-t border-white/10 bg-black/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md safe-bottom">
+        <div className="mx-auto max-w-xl flex">
+          {NAV.map(({ id, icon, label }) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                className="flex-1 py-2 flex items-center justify-center"
+              >
+                <Icon
+                  name={icon}
+                  className={`w-7 h-7 ${active ? "text-white" : "text-white/50"}`}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
