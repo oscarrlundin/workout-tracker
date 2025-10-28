@@ -636,7 +636,7 @@ function TemplatesTab({ useLiveQuery }) {
   );
 }
 
-/* ---------- Log Tab (new design + Quick Add) ---------- */
+/* ---------- Log Tab (center + button opens Quick Add modal) ---------- */
 function LogTab({ useLiveQuery, showToast }) {
   const exercises = useLiveQuery(getExercises, []);
   const templates = useLiveQuery(getTemplates, []);
@@ -653,11 +653,9 @@ function LogTab({ useLiveQuery, showToast }) {
 
   const [expanded, setExpanded] = useState({});
 
-  // Quick Add Exercise state
+  // Quick Add Exercise state (used inside modal)
   const [qaExerciseId, setQaExerciseId] = useState("");
-  const qaExercise = (exercises ?? []).find(
-    (e) => String(e.id) === String(qaExerciseId)
-  );
+  const qaExercise = (exercises ?? []).find((e) => String(e.id) === String(qaExerciseId));
   const qaIsTimed = !!qaExercise?.isTimed;
   const qaIsWeighted = qaExercise?.type === "weighted";
 
@@ -677,17 +675,18 @@ function LogTab({ useLiveQuery, showToast }) {
     setQaNumSetsInput(String(clamped));
   }
 
-  const [qaReps, setQaReps] = useState(""); // for non-timed
-  const [qaDuration, setQaDuration] = useState(""); // seconds, for timed
-  const [qaWeight, setQaWeight] = useState(""); // for weighted
+  const [qaReps, setQaReps] = useState("");
+  const [qaDuration, setQaDuration] = useState("");
+  const [qaWeight, setQaWeight] = useState("");
 
   function toggleExpanded(exId) {
     setExpanded((prev) => ({ ...prev, [exId]: !prev[exId] }));
   }
 
-  // Header state
+  // Header / Modals
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);               // ⬅️ NEW: Quick Add modal
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(workout?.title ?? "");
   useEffect(() => {
@@ -699,9 +698,7 @@ function LogTab({ useLiveQuery, showToast }) {
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => {
     let t;
-    if (workout?.startAt && !workout?.endAt) {
-      t = setInterval(() => setNowTick(Date.now()), 1000);
-    }
+    if (workout?.startAt && !workout?.endAt) t = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, [workout?.startAt, workout?.endAt]);
 
@@ -726,24 +723,15 @@ function LogTab({ useLiveQuery, showToast }) {
   }
   async function handleStartTimer() {
     const wid = await ensureWorkout();
-    await updateWorkoutMeta(wid, {
-      startAt: new Date().toISOString(),
-      endAt: null,
-      durationSec: null,
-    });
+    await updateWorkoutMeta(wid, { startAt: new Date().toISOString(), endAt: null, durationSec: null });
   }
   async function handleStopTimer() {
     const wid = await ensureWorkout();
     const current = await getWorkoutByDate(selectedDate);
-    const startAt = current?.startAt
-      ? new Date(current.startAt).getTime()
-      : Date.now();
+    const startAt = current?.startAt ? new Date(current.startAt).getTime() : Date.now();
     const endAt = Date.now();
     const dur = Math.max(0, Math.floor((endAt - startAt) / 1000));
-    await updateWorkoutMeta(wid, {
-      endAt: new Date(endAt).toISOString(),
-      durationSec: dur,
-    });
+    await updateWorkoutMeta(wid, { endAt: new Date(endAt).toISOString(), durationSec: dur });
   }
   async function setMood(v) {
     const wid = await ensureWorkout();
@@ -757,7 +745,7 @@ function LogTab({ useLiveQuery, showToast }) {
     setTitleEditing(false);
   }
 
-  // Existing set handlers
+  // Sets CRUD
   async function handleUpdateSet(id, field, value) {
     const patch = { [field]: value === "" ? null : Number(value) };
     const exId = await updateSet(id, patch);
@@ -782,12 +770,7 @@ function LogTab({ useLiveQuery, showToast }) {
     const isTimed = !!exercise.isTimed;
     const isWeighted = exercise.type === "weighted";
     const currentMax =
-      Math.max(
-        0,
-        ...((sets ?? [])
-          .filter((s) => s.exerciseId === Number(exId))
-          .map((s) => s.setIndex || 0))
-      ) || 0;
+      Math.max(0, ...((sets ?? []).filter((s) => s.exerciseId === Number(exId)).map((s) => s.setIndex || 0))) || 0;
     await addSet({
       workoutId: wid,
       exerciseId: Number(exId),
@@ -798,21 +781,20 @@ function LogTab({ useLiveQuery, showToast }) {
     });
     showToast("Set added");
   }
+
+  // Quick Add -> used in modal
   async function handleQuickAdd(e) {
     e.preventDefault();
     if (!qaExerciseId) return;
+
     const exId = Number(qaExerciseId);
     const ex = (exercises ?? []).find((x) => x.id === exId);
     if (!ex) return;
+
     const wid = workoutId || (await createWorkout(selectedDate));
 
     const currentMax =
-      Math.max(
-        0,
-        ...((sets ?? [])
-          .filter((s) => s.exerciseId === exId)
-          .map((s) => s.setIndex || 0))
-      ) || 0;
+      Math.max(0, ...((sets ?? []).filter((s) => s.exerciseId === exId).map((s) => s.setIndex || 0))) || 0;
 
     const count = Math.max(1, Math.min(Number(qaNumSets) || 1, 20));
     for (let i = 0; i < count; i++) {
@@ -820,21 +802,17 @@ function LogTab({ useLiveQuery, showToast }) {
         workoutId: wid,
         exerciseId: exId,
         setIndex: currentMax + i + 1,
-        reps: ex.isTimed ? null : qaReps === "" ? null : Number(qaReps),
-        durationSec: ex.isTimed
-          ? qaDuration === "" ? null : Number(qaDuration)
-          : null,
-        weightKg:
-          ex.type === "weighted"
-            ? qaWeight === "" ? null : Number(qaWeight)
-            : null,
+        reps: ex.isTimed ? null : (qaReps === "" ? null : Number(qaReps)),
+        durationSec: ex.isTimed ? (qaDuration === "" ? null : Number(qaDuration)) : null,
+        weightKg: ex.type === "weighted" ? (qaWeight === "" ? null : Number(qaWeight)) : null,
       });
     }
+
     await updatePRForExercise(exId);
     showToast(`${count} set${count > 1 ? "s" : ""} added to ${ex.name}`);
-    setQaReps("");
-    setQaDuration("");
-    setQaWeight("");
+
+    // reset & close
+    setQaReps(""); setQaDuration(""); setQaWeight(""); setAddOpen(false);
   }
 
   // Derived
@@ -846,71 +824,71 @@ function LogTab({ useLiveQuery, showToast }) {
     });
     return grouped;
   }, [sets]);
-
   const exerciseCount = Object.keys(groupedSets).length;
   const durationText = formatMMSS(computedDurationSec());
   const moodValue = Number(workout?.mood ?? 3);
-  const moodFace = MOOD.find((m) => m.v === moodValue)?.glyph ?? "😐";
+  const moodFace = MOOD.find(m => m.v === moodValue)?.glyph ?? "😐";
 
   return (
     <div className="text-white">
       {/* HEADER */}
       <div className="sticky top-0 bg-black pb-3 safe-top">
         <div className="flex items-center justify-between pt-2">
-          <button
-            onClick={() => setTemplatesOpen(true)}
-            className="p-2 rounded-xl active:opacity-80"
-            aria-label="Open templates"
-          >
+          <button onClick={() => setTemplatesOpen(true)} className="p-2 rounded-xl active:opacity-80" aria-label="Templates">
             <Icon name="templates" className="w-7 h-7 text-white/90" />
           </button>
-          <div className="flex-1 text-center">
-            {!titleEditing ? (
-              <button
-                className="text-3xl font-extrabold tracking-tight active:opacity-90"
-                onClick={() => setTitleEditing(true)}
-                title="Edit title"
-              >
-                {(workout?.title || "WORKOUT").toUpperCase()}
-              </button>
-            ) : (
-              <input
-                autoFocus
-                className="bg-transparent border-b border-white/30 text-3xl font-extrabold text-center outline-none"
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onBlur={saveTitle}
-                onKeyDown={(e) => e.key === "Enter" && saveTitle()}
-                placeholder="Name your workout"
-              />
-            )}
-            <div className="text-sm text-white/60 mt-1">
-              {new Date(selectedDate).toLocaleDateString()}
-            </div>
-          </div>
+
+          {/* Center + button */}
           <button
-            onClick={() => setCalendarOpen(true)}
-            className="p-2 rounded-xl active:opacity-80"
-            aria-label="Pick date"
+            onClick={() => setAddOpen(true)}
+            className="p-3 bg-white text-black rounded-full active:scale-95 transition-transform"
+            aria-label="Add Exercise"
+            title="Add Exercise"
           >
+            <Icon name="plus" className="w-6 h-6 text-white" />
+          </button>
+
+          <button onClick={() => setCalendarOpen(true)} className="p-2 rounded-xl active:opacity-80" aria-label="Calendar">
             <Icon name="calendar" className="w-7 h-7 text-white/90" />
           </button>
         </div>
 
-        {/* Start/Stop pill */}
+        {/* Title + date */}
+        <div className="flex-1 text-center mt-3">
+          {!titleEditing ? (
+            <button className="text-3xl font-extrabold tracking-tight active:opacity-90" onClick={() => setTitleEditing(true)}>
+              {(workout?.title || "WORKOUT").toUpperCase()}
+            </button>
+          ) : (
+            <input
+              autoFocus
+              className="bg-transparent border-b border-white/30 text-3xl font-extrabold text-center outline-none"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={saveTitle}
+              onKeyDown={(e) => e.key === "Enter" && saveTitle()}
+              placeholder="Name your workout"
+            />
+          )}
+          <div className="text-sm text-white/60 mt-1">
+            {new Date(selectedDate).toLocaleDateString()}
+          </div>
+        </div>
+
+        {/* Start/Stop */}
         <div className="mt-3 flex justify-end">
           {workout?.startAt && !workout?.endAt ? (
-            <button className="px-3 py-1 rounded-full bg-white text-black text-sm font-medium" onClick={handleStopTimer}>
+            <button onClick={handleStopTimer} className="px-3 py-1 rounded-full bg-white text-black text-sm font-medium">
               Stop
             </button>
           ) : (
-            <button className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm" onClick={handleStartTimer}>
+            <button onClick={handleStartTimer} className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">
               Start
             </button>
           )}
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         <div className="mt-3 grid grid-cols-3 items-center text-center">
           <div>
             <div className="text-2xl font-semibold">{exerciseCount}</div>
@@ -925,100 +903,12 @@ function LogTab({ useLiveQuery, showToast }) {
           </div>
           <div>
             <div className="text-2xl font-semibold">{durationText}</div>
-            <div className="text-xs text-white/60">
-              {workout?.startAt && !workout?.endAt ? "Live" : "Duration"}
-            </div>
+            <div className="text-xs text-white/60">{workout?.startAt && !workout?.endAt ? "Live" : "Duration"}</div>
           </div>
         </div>
       </div>
 
-      {/* Quick Add Exercise */}
-      <form
-        onSubmit={handleQuickAdd}
-        className="mt-4 border border-zinc-800 rounded-xl bg-zinc-900 p-3"
-      >
-        <h3 className="font-semibold mb-2">Add Exercise</h3>
-
-        <div className="grid gap-2">
-          <select
-            className="h-10 border rounded bg-zinc-800 border-zinc-700 px-3 text-base"
-            value={qaExerciseId}
-            onChange={(e) => setQaExerciseId(e.target.value)}
-          >
-            <option value="">Select exercise…</option>
-            {(exercises ?? []).map((ex) => (
-              <option key={ex.id} value={ex.id}>
-                {ex.name}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-white/70">Sets</label>
-            <button
-              type="button"
-              className="h-10 w-10 border rounded border-zinc-700"
-              onClick={() => bumpQaNumSets(-1)}
-            >
-              –
-            </button>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className="h-10 w-20 border rounded px-2 text-center bg-zinc-800 border-zinc-700"
-              value={qaNumSetsInput}
-              onChange={(e) => setQaNumSetsInput(e.target.value)}
-              onBlur={commitQaNumSets}
-              placeholder="sets"
-            />
-            <button
-              type="button"
-              className="h-10 w-10 border rounded border-zinc-700"
-              onClick={() => bumpQaNumSets(1)}
-            >
-              +
-            </button>
-          </div>
-
-          {qaExerciseId && !qaIsTimed && (
-            <input
-              type="number"
-              className="h-10 border rounded px-3 text-base bg-zinc-800 border-zinc-700"
-              placeholder="Reps (optional)"
-              value={qaReps}
-              onChange={(e) => setQaReps(e.target.value)}
-            />
-          )}
-
-          {qaExerciseId && qaIsTimed && (
-            <input
-              type="number"
-              className="h-10 border rounded px-3 text-base bg-zinc-800 border-zinc-700"
-              placeholder="Duration in seconds (optional)"
-              value={qaDuration}
-              onChange={(e) => setQaDuration(e.target.value)}
-            />
-          )}
-
-          {qaExerciseId && qaIsWeighted && (
-            <input
-              type="number"
-              step="0.5"
-              className="h-10 border rounded px-3 text-base bg-zinc-800 border-zinc-700"
-              placeholder="Weight (kg, optional)"
-              value={qaWeight}
-              onChange={(e) => setQaWeight(e.target.value)}
-            />
-          )}
-
-          <button className="min-h-[44px] px-4 rounded bg-white text-black font-semibold">
-            Add to Workout
-          </button>
-        </div>
-      </form>
-
-      {/* Grouped exercises */}
+      {/* Grouped exercises (unchanged) */}
       <div className="mt-4 space-y-3">
         {Object.entries(groupedSets).map(([exId, exSets]) => {
           const exercise = exercises?.find((e) => e.id === Number(exId));
@@ -1029,56 +919,27 @@ function LogTab({ useLiveQuery, showToast }) {
           const repsList = exSets.map((s) => s.reps).filter((r) => r != null);
           const durList = exSets.map((s) => s.durationSec).filter((r) => r != null);
           const wList = exSets.map((s) => s.weightKg).filter((r) => r != null);
-          const uniformReps =
-            repsList.length && repsList.every((v) => v === repsList[0])
-              ? repsList[0]
-              : null;
-          const uniformDur =
-            durList.length && durList.every((v) => v === durList[0])
-              ? durList[0]
-              : null;
-          const uniformW =
-            wList.length && wList.every((v) => v === wList[0]) ? wList[0] : null;
+          const uniformReps = repsList.length && repsList.every((v) => v === repsList[0]) ? repsList[0] : null;
+          const uniformDur = durList.length && durList.every((v) => v === durList[0]) ? durList[0] : null;
+          const uniformW = wList.length && wList.every((v) => v === wList[0]) ? wList[0] : null;
 
           const summary =
-            isTimed && uniformDur
-              ? `${exSets.length} × ${formatDuration(uniformDur)}`
-              : !isTimed && uniformReps
-              ? `${exSets.length} × ${uniformReps}`
-              : `${exSets.length} sets`;
-          const suffix =
-            isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
+            isTimed && uniformDur ? `${exSets.length} × ${formatDuration(uniformDur)}`
+            : !isTimed && uniformReps ? `${exSets.length} × ${uniformReps}`
+            : `${exSets.length} sets`;
+          const suffix = isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
 
           return (
             <div key={exId} className="border border-zinc-800 rounded-xl bg-zinc-900">
               <div className="flex justify-between items-center p-3">
-                <div
-                  onClick={() => toggleExpanded(exId)}
-                  className="flex-1 text-left"
-                >
+                <div onClick={() => toggleExpanded(exId)} className="flex-1 text-left">
                   <div className="font-medium">{exercise.name}</div>
-                  <div className="text-sm text-white/60">
-                    {summary}
-                    {suffix}
-                  </div>
+                  <div className="text-sm text-white/60">{summary}{suffix}</div>
                 </div>
                 <div className="flex gap-2 items-center">
-                  <button
-                    onClick={() => handleAddSet(exId)}
-                    className="text-xs border rounded px-2 py-1 border-zinc-700"
-                  >
-                    + Set
-                  </button>
-                  <button
-                    onClick={() => handleDeleteExercise(Number(exId))}
-                    className="text-xs border rounded px-2 py-1 border-zinc-700"
-                  >
-                    🗑
-                  </button>
-                  <button
-                    onClick={() => toggleExpanded(exId)}
-                    className="text-white/60 text-sm w-6 text-center"
-                  >
+                  <button onClick={() => handleAddSet(exId)} className="text-xs border rounded px-2 py-1 border-zinc-700">+ Set</button>
+                  <button onClick={() => handleDeleteExercise(Number(exId))} className="text-xs border rounded px-2 py-1 border-zinc-700">🗑</button>
+                  <button onClick={() => toggleExpanded(exId)} className="text-white/60 text-sm w-6 text-center">
                     {expanded[exId] ? "▲" : "▼"}
                   </button>
                 </div>
@@ -1097,69 +958,45 @@ function LogTab({ useLiveQuery, showToast }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {exSets
-                        .sort((a, b) => a.setIndex - b.setIndex)
-                        .map((s, idx) => (
-                          <tr
-                            key={s.id}
-                            className="border-b border-zinc-800 last:border-0"
-                          >
-                            <td className="py-1">{idx + 1}</td>
-                            {!isTimed && (
-                              <td>
-                                <input
-                                  type="number"
-                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
-                                  value={s.reps ?? ""}
-                                  onChange={(e) =>
-                                    handleUpdateSet(s.id, "reps", e.target.value)
-                                  }
-                                />
-                              </td>
-                            )}
-                            {isTimed && (
-                              <td>
-                                <input
-                                  type="number"
-                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
-                                  value={s.durationSec ?? ""}
-                                  onChange={(e) =>
-                                    handleUpdateSet(
-                                      s.id,
-                                      "durationSec",
-                                      e.target.value
-                                    )
-                                  }
-                                />
-                              </td>
-                            )}
-                            {isWeighted && (
-                              <td>
-                                <input
-                                  type="number"
-                                  step="0.5"
-                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
-                                  value={s.weightKg ?? ""}
-                                  onChange={(e) =>
-                                    handleUpdateSet(
-                                      s.id,
-                                      "weightKg",
-                                      e.target.value
-                                    )
-                                  }
-                                />
-                              </td>
-                            )}
-                            <td className="text-right">
-                              <button
-                                className="text-xs text-white/60"
-                                onClick={() => handleDeleteSet(s.id)}
-                              >
-                                ✕
-                              </button>
+                      {exSets.sort((a, b) => a.setIndex - b.setIndex).map((s, idx) => (
+                        <tr key={s.id} className="border-b border-zinc-800 last:border-0">
+                          <td className="py-1">{idx + 1}</td>
+                          {!isTimed && (
+                            <td>
+                              <input
+                                type="number"
+                                className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                value={s.reps ?? ""}
+                                onChange={(e) => handleUpdateSet(s.id, "reps", e.target.value)}
+                              />
                             </td>
-                          </tr>
-                        ))}
+                          )}
+                          {isTimed && (
+                            <td>
+                              <input
+                                type="number"
+                                className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                value={s.durationSec ?? ""}
+                                onChange={(e) => handleUpdateSet(s.id, "durationSec", e.target.value)}
+                              />
+                            </td>
+                          )}
+                          {isWeighted && (
+                            <td>
+                              <input
+                                type="number"
+                                step="0.5"
+                                className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                value={s.weightKg ?? ""}
+                                onChange={(e) => handleUpdateSet(s.id, "weightKg", e.target.value)}
+                              />
+                            </td>
+                          )}
+                          <td className="text-right">
+                            <button className="text-xs text-white/60" onClick={() => handleDeleteSet(s.id)}>✕</button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1167,7 +1004,6 @@ function LogTab({ useLiveQuery, showToast }) {
             </div>
           );
         })}
-
         {(!sets || sets.length === 0) && (
           <p className="text-white/60 text-sm text-center mt-6">
             No exercises logged for this date yet.
@@ -1176,19 +1012,12 @@ function LogTab({ useLiveQuery, showToast }) {
       </div>
 
       {/* Calendar modal */}
-      <Modal
-        open={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        title="Pick a date"
-      >
+      <Modal open={calendarOpen} onClose={() => setCalendarOpen(false)} title="Pick a date">
         <input
           type="date"
           className="w-full h-12 rounded bg-zinc-800 border border-white/10 px-3"
           value={selectedDate}
-          onChange={(e) => {
-            setSelectedDate(e.target.value);
-            setCalendarOpen(false);
-          }}
+          onChange={(e) => { setSelectedDate(e.target.value); setCalendarOpen(false); }}
         />
         {!workout && (
           <p className="mt-3 text-sm text-white/60">
@@ -1198,19 +1027,14 @@ function LogTab({ useLiveQuery, showToast }) {
       </Modal>
 
       {/* Templates modal */}
-      <Modal
-        open={templatesOpen}
-        onClose={() => setTemplatesOpen(false)}
-        title="Load a template"
-      >
+      <Modal open={templatesOpen} onClose={() => setTemplatesOpen(false)} title="Load a template">
         <select
           className="w-full h-12 rounded bg-zinc-800 border border-white/10 px-3"
           onChange={async (e) => {
             const id = Number(e.target.value);
             if (!id) return;
             const data = await getTemplateWithItems(id);
-            if (!data?.items?.length)
-              return alert("This template has no exercises.");
+            if (!data?.items?.length) return alert("This template has no exercises.");
 
             const wid = await ensureWorkout();
             for (const item of data.items) {
@@ -1219,12 +1043,7 @@ function LogTab({ useLiveQuery, showToast }) {
               const isTimed = !!ex?.isTimed;
               const isWeighted = ex?.type === "weighted";
               const currentMax =
-                Math.max(
-                  0,
-                  ...((sets ?? [])
-                    .filter((s) => s.exerciseId === item.exerciseId)
-                    .map((s) => s.setIndex || 0))
-                ) || 0;
+                Math.max(0, ...((sets ?? []).filter((s) => s.exerciseId === item.exerciseId).map((s) => s.setIndex || 0))) || 0;
 
               for (let i = 0; i < count; i++) {
                 await addSet({
@@ -1243,16 +1062,54 @@ function LogTab({ useLiveQuery, showToast }) {
           defaultValue=""
         >
           <option value="">Select Template...</option>
-          {(templates ?? []).map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
+          {(templates ?? []).map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
         </select>
+      </Modal>
+
+      {/* Add Exercise modal (Quick Add form moved here) */}
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Exercise">
+        <form onSubmit={handleQuickAdd} className="grid gap-3">
+          <select
+            className="h-12 border rounded bg-zinc-800 border-white/10 px-3"
+            value={qaExerciseId}
+            onChange={(e) => setQaExerciseId(e.target.value)}
+          >
+            <option value="">Select exercise…</option>
+            {(exercises ?? []).map((ex) => (
+              <option key={ex.id} value={ex.id}>{ex.name}</option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-white/70">Sets</label>
+            <button type="button" className="h-10 w-10 border rounded border-white/10" onClick={() => bumpQaNumSets(-1)}>–</button>
+            <input
+              type="text" inputMode="numeric" pattern="[0-9]*"
+              className="h-10 w-20 border rounded px-2 text-center bg-zinc-800 border-white/10"
+              value={qaNumSetsInput} onChange={(e) => setQaNumSetsInput(e.target.value)} onBlur={commitQaNumSets}
+            />
+            <button type="button" className="h-10 w-10 border rounded border-white/10" onClick={() => bumpQaNumSets(1)}>+</button>
+          </div>
+
+          {qaExerciseId && !qaIsTimed && (
+            <input type="number" className="h-10 border rounded px-3 bg-zinc-800 border-white/10" placeholder="Reps (optional)" value={qaReps} onChange={(e) => setQaReps(e.target.value)} />
+          )}
+          {qaExerciseId && qaIsTimed && (
+            <input type="number" className="h-10 border rounded px-3 bg-zinc-800 border-white/10" placeholder="Duration in seconds (optional)" value={qaDuration} onChange={(e) => setQaDuration(e.target.value)} />
+          )}
+          {qaExerciseId && qaIsWeighted && (
+            <input type="number" step="0.5" className="h-10 border rounded px-3 bg-zinc-800 border-white/10" placeholder="Weight (kg, optional)" value={qaWeight} onChange={(e) => setQaWeight(e.target.value)} />
+          )}
+
+          <button className="min-h-[44px] px-4 rounded bg-white text-black font-semibold">
+            Add to Workout
+          </button>
+        </form>
       </Modal>
     </div>
   );
 }
+
 
 /* ---------- Progress Tab (shows PR summary) ---------- */
 function ProgressTab({ useLiveQuery }) {
