@@ -720,6 +720,83 @@ function TemplatesTab({ useLiveQuery }) {
   );
 }
 
+// ---------- Swipeable Row (Step 1: drag only, no delete) ----------
+function SwipeRow({ children }) {
+  const [dx, setDx] = useState(0);           // current horizontal offset
+  const [anim, setAnim] = useState(false);   // animate on release
+  const start = useRef({ x: 0, y: 0, active: false, locked: false }); // gesture state
+
+  function isFormControl(el) {
+    if (!el) return false;
+    const tag = el.tagName?.toLowerCase();
+    return tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'button';
+  }
+
+  const onPointerDown = (e) => {
+    // Ignore drags that start on form controls (so editing inputs won't swipe)
+    if (isFormControl(e.target)) return;
+    const tgt = e.currentTarget;
+    try { tgt.setPointerCapture(e.pointerId); } catch {}
+    start.current = { x: e.clientX, y: e.clientY, active: true, locked: false };
+    setAnim(false);
+  };
+
+  const onPointerMove = (e) => {
+    if (!start.current.active) return;
+
+    const dxNow = e.clientX - start.current.x;
+    const dyNow = e.clientY - start.current.y;
+
+    // Angle guard and dead zone
+    if (!start.current.locked) {
+      if (Math.abs(dyNow) > 8 && Math.abs(dyNow) > Math.abs(dxNow)) {
+        // vertical scroll - abort swipe
+        start.current.active = false;
+        setAnim(true);
+        setDx(0);
+        return;
+      }
+      if (Math.abs(dxNow) > 8 && Math.abs(dxNow) > Math.abs(dyNow) * 1.2) {
+        start.current.locked = true;
+      } else {
+        return; // not yet considered a horizontal swipe
+      }
+    }
+
+    // Only allow swiping to the left (negative)
+    const next = Math.min(0, dxNow);
+    setDx(next);
+  };
+
+  const onPointerUp = (e) => {
+    start.current.active = false;
+    start.current.locked = false;
+    setAnim(true);
+    setDx(0); // snap back for Step 1
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-xl">
+      {/* Background layer (will become delete area in step 2) */}
+      <div className="absolute inset-0 bg-red-600/0 pointer-events-none" />
+      {/* Foreground card */}
+      <div
+        className="rounded-xl touch-pan-y select-none"
+        style={{
+          transform: `translateX(${dx}px)`,
+          transition: anim ? 'transform 200ms ease' : 'none',
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Log Tab (center + button opens Quick Add modal) ---------- */
 function LogTab({ useLiveQuery, showToast }) {
   const exercises = useLiveQuery(getExercises, []);
@@ -1054,78 +1131,81 @@ const durationText = formatMMSS(durationSec);
           const suffix = isWeighted && uniformW != null ? ` @ ${uniformW} kg` : "";
 
           return (
-            <div key={exId} className="rounded-xl bg-[#343434]">
-              <div className="flex justify-between items-center p-3">
-                <div onClick={() => toggleExpanded(exId)} className="flex-1 text-left">
-                  <div className="font-medium">{exercise.name}</div>
-                  <div className="text-sm text-white/60">{summary}{suffix}</div>
+            <SwipeRow key={exId}>
+              <div className="rounded-xl bg-[#343434]">
+                <div className="flex justify-between items-center p-3">
+                  {/** existing header content **/}
+                  <div onClick={() => toggleExpanded(exId)} className="flex-1 text-left">
+                    <div className="font-medium">{exercise.name}</div>
+                    <div className="text-sm text-white/60">{summary}{suffix}</div>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <button onClick={() => handleAddSet(exId)} className="text-xs border rounded px-2 py-1 border-zinc-700">+ Set</button>
+                    <button onClick={() => handleDeleteExercise(Number(exId))} className="text-xs border rounded px-2 py-1 border-zinc-700">🗑</button>
+                    <button onClick={() => toggleExpanded(exId)} className="text-white/60 text-sm w-6 text-center">
+                      {expanded[exId] ? "▲" : "▼"}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2 items-center">
-                  <button onClick={() => handleAddSet(exId)} className="text-xs border rounded px-2 py-1 border-zinc-700">+ Set</button>
-                  <button onClick={() => handleDeleteExercise(Number(exId))} className="text-xs border rounded px-2 py-1 border-zinc-700">🗑</button>
-                  <button onClick={() => toggleExpanded(exId)} className="text-white/60 text-sm w-6 text-center">
-                    {expanded[exId] ? "▲" : "▼"}
-                  </button>
-                </div>
-              </div>
 
-              {expanded[exId] && (
-                <div className="border-t border-zinc-800 px-3 pb-3">
-                  <table className="w-full text-sm mt-2">
-                    <thead>
-                      <tr className="text-white/60 border-b border-zinc-800">
-                        <th className="text-left w-10 py-1">#</th>
-                        {!isTimed && <th>Reps</th>}
-                        {isTimed && <th>Time (s)</th>}
-                        {isWeighted && <th>Weight (kg)</th>}
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {exSets.sort((a, b) => a.setIndex - b.setIndex).map((s, idx) => (
-                        <tr key={s.id} className="border-b border-zinc-800 last:border-0">
-                          <td className="py-1">{idx + 1}</td>
-                          {!isTimed && (
-                            <td>
-                              <input
-                                type="number"
-                                className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
-                                value={s.reps ?? ""}
-                                onChange={(e) => handleUpdateSet(s.id, "reps", e.target.value)}
-                              />
-                            </td>
-                          )}
-                          {isTimed && (
-                            <td>
-                              <input
-                                type="number"
-                                className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
-                                value={s.durationSec ?? ""}
-                                onChange={(e) => handleUpdateSet(s.id, "durationSec", e.target.value)}
-                              />
-                            </td>
-                          )}
-                          {isWeighted && (
-                            <td>
-                              <input
-                                type="number"
-                                step="0.5"
-                                className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
-                                value={s.weightKg ?? ""}
-                                onChange={(e) => handleUpdateSet(s.id, "weightKg", e.target.value)}
-                              />
-                            </td>
-                          )}
-                          <td className="text-right">
-                            <button className="text-xs text-white/60" onClick={() => handleDeleteSet(s.id)}>✕</button>
-                          </td>
+                {expanded[exId] && (
+                  <div className="border-t border-zinc-800 px-3 pb-3">
+                    <table className="w-full text-sm mt-2">
+                      <thead>
+                        <tr className="text-white/60 border-b border-zinc-800">
+                          <th className="text-left w-10 py-1">#</th>
+                          {!isTimed && <th>Reps</th>}
+                          {isTimed && <th>Time (s)</th>}
+                          {isWeighted && <th>Weight (kg)</th>}
+                          <th></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                      </thead>
+                      <tbody>
+                        {exSets.sort((a, b) => a.setIndex - b.setIndex).map((s, idx) => (
+                          <tr key={s.id} className="border-b border-zinc-800 last:border-0">
+                            <td className="py-1">{idx + 1}</td>
+                            {!isTimed && (
+                              <td>
+                                <input
+                                  type="number"
+                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                  value={s.reps ?? ""}
+                                  onChange={(e) => handleUpdateSet(s.id, "reps", e.target.value)}
+                                />
+                              </td>
+                            )}
+                            {isTimed && (
+                              <td>
+                                <input
+                                  type="number"
+                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                  value={s.durationSec ?? ""}
+                                  onChange={(e) => handleUpdateSet(s.id, "durationSec", e.target.value)}
+                                />
+                              </td>
+                            )}
+                            {isWeighted && (
+                              <td>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  className="w-20 border rounded px-1 text-center bg-zinc-800 border-zinc-700"
+                                  value={s.weightKg ?? ""}
+                                  onChange={(e) => handleUpdateSet(s.id, "weightKg", e.target.value)}
+                                />
+                              </td>
+                            )}
+                            <td className="text-right">
+                              <button className="text-xs text-white/60" onClick={() => handleDeleteSet(s.id)}>✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </SwipeRow>
           );
         })}
         {(!sets || sets.length === 0) && (
