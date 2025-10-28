@@ -890,64 +890,69 @@ function LogTab({ useLiveQuery, showToast }) {
   return (
     <div className="text-white">
       {/* HEADER */}
-      <div className="sticky top-0 bg-black pb-3 safe-top">
-        <div className="flex items-center justify-start pt-2">
-          <button onClick={() => setTemplatesOpen(true)} className="p-2" aria-label="Templates">
-            <Icon name="templates" className="w-7 h-7 text-white" />
-          </button>
-        </div>
+      <div className="sticky top-0 bg-black safe-top pb-3">
+        {/* Top bar: left icon, centered date, right spacer to keep perfect centering */}
+        <div className="pt-2 grid grid-cols-3 items-center">
+          {/* Left: Templates */}
+          <div className="flex justify-start">
+            <button
+              onClick={() => setTemplatesOpen(true)}
+              className="p-2"
+              aria-label="Templates"
+            >
+              <Icon name="templates" className="w-7 h-7 text-white" />
+            </button>
+          </div>
 
-        {/* Date (bold, uppercase, aligned with top icons) + Title */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 text-center">
-          <button
-            onClick={() => setCalendarOpen(true)}
-            className="text-base font-extrabold uppercase tracking-wide active:opacity-80"
-            aria-label="Change date"
-            title="Change date"
-          >
-            {new Date(selectedDate).toLocaleDateString(undefined, {
-              weekday: 'short',
-              day: 'numeric',
-              month: 'short',
-            }).toUpperCase()}
-          </button>
+          {/* Center: Date (press to open calendar) */}
+          <div className="flex justify-center">
+            <button
+              onClick={() => setCalendarOpen(true)}
+              className="text-base font-extrabold uppercase tracking-wide active:opacity-80"
+              aria-label="Change date"
+              title="Change date"
+            >
+              {new Date(selectedDate)
+                .toLocaleDateString(undefined, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                })
+                .toUpperCase()}
+            </button>
+          </div>
 
-          <div className="mt-1">
-            {!titleEditing ? (
-              <button
-                className="text-3xl font-extrabold tracking-tight active:opacity-90"
-                onClick={() => setTitleEditing(true)}
-              >
-                {(workout?.title || "WORKOUT").toUpperCase()}
-              </button>
-            ) : (
-              <input
-                autoFocus
-                className="bg-transparent border-b border-white/30 text-3xl font-extrabold text-center outline-none"
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onBlur={saveTitle}
-                onKeyDown={(e) => e.key === 'Enter' && saveTitle()}
-                placeholder="Name your workout"
-              />
-            )}
+          {/* Right: spacer with same width as left button to keep the date visually centered */}
+          <div className="flex justify-end">
+            <span className="p-2 opacity-0">
+              <Icon name="templates" className="w-7 h-7" />
+            </span>
           </div>
         </div>
 
-        {/* Start/Stop */}
-        <div className="mt-3 flex justify-end">
-          {workout?.startAt && !workout?.endAt ? (
-            <button onClick={handleStopTimer} className="px-3 py-1 rounded-full bg-white text-black text-sm font-medium">
-              Stop
+        {/* Big title (separate from the date) */}
+        <div className="mt-1 text-center">
+          {!titleEditing ? (
+            <button
+              className="text-4xl font-extrabold tracking-tight active:opacity-90"
+              onClick={() => setTitleEditing(true)}
+            >
+              {(workout?.title || "WORKOUT").toUpperCase()}
             </button>
           ) : (
-            <button onClick={handleStartTimer} className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">
-              Start
-            </button>
+            <input
+              autoFocus
+              className="bg-transparent border-b border-white/30 text-4xl font-extrabold text-center outline-none"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={saveTitle}
+              onKeyDown={(e) => e.key === "Enter" && saveTitle()}
+              placeholder="Name your workout"
+            />
           )}
         </div>
 
-        {/* Stats */}
+        {/* Stats row (kept as before) */}
         <div className="mt-3 grid grid-cols-3 items-center text-center">
           <div>
             <div className="text-2xl font-semibold">{exerciseCount}</div>
@@ -962,7 +967,9 @@ function LogTab({ useLiveQuery, showToast }) {
           </div>
           <div>
             <div className="text-2xl font-semibold">{durationText}</div>
-            <div className="text-xs text-white/60">{workout?.startAt && !workout?.endAt ? "Live" : "Duration"}</div>
+            <div className="text-xs text-white/60">
+              {workout?.startAt && !workout?.endAt ? "Live" : "Duration"}
+            </div>
           </div>
         </div>
       </div>
