@@ -8,6 +8,11 @@ import TrendingUpIcon from '@/icons/trending-up.svg?react'
 import DumbbellIcon   from '@/icons/dumbbell.svg?react'
 import GridIcon       from '@/icons/grid.svg?react'
 import SettingsIcon   from '@/icons/settings.svg?react'
+import Mood1 from "../icons/mood-1.svg?react";
+import Mood2 from "../icons/mood-2.svg?react";
+import Mood3 from "../icons/mood-3.svg?react";
+import Mood4 from "../icons/mood-4.svg?react";
+import Mood5 from "../icons/mood-5.svg?react";
 
 const map = {
   calendar: CalendarIcon,
@@ -19,6 +24,11 @@ const map = {
   exercises: DumbbellIcon,
   grid: GridIcon,
   settings: SettingsIcon,
+   "mood-1": Mood1,
+  "mood-2": Mood2,
+  "mood-3": Mood3,
+  "mood-4": Mood4,
+  "mood-5": Mood5,
 }
 
 export default function Icon({ name, className = '', ariaLabel }) {

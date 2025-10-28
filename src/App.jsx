@@ -981,7 +981,7 @@ const durationText = formatMMSS(durationSec);
       aria-label="Edit mood"
       title="Edit mood"
     >
-      {moodFace}
+      <Icon name={MOOD.find(m => m.v === moodValue)?.id} className="w-7 h-7 text-white" />
     </button>
     <div className="text-xs text-white/60">Mood</div>
   </div>
@@ -1247,7 +1247,7 @@ const durationText = formatMMSS(durationSec);
               aria-label={m.label}
               title={m.label}
             >
-              <span className="text-2xl leading-none">{m.glyph}</span>
+             <Icon name={m.id} className="w-7 h-7 text-white" />
             </button>
           ))}
         </div>
