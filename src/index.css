@@ -1,5 +1,21 @@
-
-@import './styles/fonts.css';
 @import "tailwindcss";
 @import "./mobile.css";
 
+@layer base {
+  @font-face {
+    font-family: "SangBleau";
+    src: url("./assets/fonts/sangbleau-kingdom-medium.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    --font-sang: "SangBleau", system-ui, sans-serif;
+  }
+
+  /* ✅ Make SangBleau the default font for the whole app */
+  body {
+    font-family: var(--font-sang);
+  }
+}
