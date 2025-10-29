@@ -1039,22 +1039,22 @@ const durationText = formatMMSS(durationSec);
           </div>
 
           {/* Center: Date (press to open calendar) */}
-          <div className="flex justify-center">
-            <button
-              onClick={() => setCalendarOpen(true)}
-              className="text-base font-extrabold uppercase tracking-wide active:opacity-80"
-              aria-label="Change date"
-              title="Change date"
-            >
-              {new Date(selectedDate)
-                .toLocaleDateString(undefined, {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                })
-                .toUpperCase()}
-            </button>
-          </div>
+         <div className="flex justify-center">
+ <button
+  onClick={() => setCalendarOpen(true)}
+  className="font-gotham italic text-base font-semibold uppercase tracking-wide active:opacity-80"
+  aria-label="Change date"
+  title="Change date"
+>
+  {new Date(selectedDate)
+    .toLocaleDateString(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    })
+    .toUpperCase()}
+</button>
+</div>
 
           {/* Right: spacer with same width as left button to keep the date visually centered */}
           <div className="flex justify-end">
@@ -1067,8 +1067,8 @@ const durationText = formatMMSS(durationSec);
         {/* Big title (separate from the date) */}
         <div className="mt-6 text-center">
           {!titleEditing ? (
-          <button
-  className="[font-family:var(--font-sang)] text-4xl font-medium tracking-tight active:opacity-90"
+       <button
+  className="font-gotham text-4xl font-normal tracking-tight active:opacity-90"
   onClick={() => setTitleEditing(true)}
 >
   {(workout?.title || "WORKOUT").toUpperCase()}
@@ -1089,10 +1089,10 @@ const durationText = formatMMSS(durationSec);
 
 <div className="mt-8 grid grid-cols-3 items-center text-center">
   {/* Exercises count */}
-  <div>
-    <div className="text-2xl font-semibold">{exerciseCount}</div>
-    <div className="text-xs text-white/60">Exercises</div>
-  </div>
+ <div>
+  <div className="font-gotham italic font-extralight text-2xl">{exerciseCount}</div>
+  <div className="text-xs text-white/60">Exercises</div>
+</div>
 
   {/* Mood */}
   <div>
@@ -1110,33 +1110,33 @@ const durationText = formatMMSS(durationSec);
   {/* Duration (tap to edit MM:SS) */}
   <div>
     {!durationEditing ? (
-      <button
-        className="text-2xl font-semibold active:opacity-80"
-        onClick={() => setDurationEditing(true)}
-        aria-label="Edit duration"
-        title="Edit duration"
-      >
-        {durationText}
-      </button>
+     <button
+  className="font-gotham italic font-extralight text-2xl active:opacity-80"
+  onClick={() => setDurationEditing(true)}
+  aria-label="Edit duration"
+  title="Edit duration"
+>
+  {durationText}
+</button>
     ) : (
       <input
-        autoFocus
-        inputMode="numeric"
-        pattern="^(\d{1,4}|\d{1,3}:[0-5]\d)$" // allow 1–4 digits or MM:SS
-        maxLength={5}                          // e.g., "2555" or "25:55"
-        placeholder="MM:SS"
-        className="text-2xl font-semibold bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
-        value={durationDraft}
-        onChange={(e) => setDurationDraft(e.target.value.replace(/[^\d:]/g, ""))}
-        onBlur={saveDuration}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") saveDuration();
-          if (e.key === "Escape") {
-            setDurationEditing(false);
-            setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
-          }
-        }}
-      />
+  autoFocus
+  inputMode="numeric"
+  pattern="^(\d{1,4}|\d{1,3}:[0-5]\d)$"
+  maxLength={5}
+  placeholder="MM:SS"
+  className="font-gotham italic font-extralight text-2xl bg-transparent border-b border-white/30 text-center outline-none w-[88px]"
+  value={durationDraft}
+  onChange={(e) => setDurationDraft(e.target.value.replace(/[^\d:]/g, ""))}
+  onBlur={saveDuration}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") saveDuration();
+    if (e.key === "Escape") {
+      setDurationEditing(false);
+      setDurationDraft(formatMMSS(Number(workout?.durationSec ?? 0)));
+    }
+  }}
+/>
     )}
     <div className="text-xs text-white/60">Duration</div>
   </div>

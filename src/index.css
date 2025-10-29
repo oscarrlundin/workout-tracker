@@ -1,21 +1,43 @@
 @import "tailwindcss";
 @import "./mobile.css";
 
+/* --- Gotham font setup --- */
 @layer base {
+  /* Regular */
   @font-face {
-    font-family: "SangBleau";
-    src: url("./assets/fonts/sangbleau-kingdom-medium.woff2") format("woff2");
-    font-weight: 500;
+    font-family: "Gotham";
+    src: url("./assets/fonts/GothamRegular.woff2") format("woff2");
+    font-weight: 400;
     font-style: normal;
     font-display: swap;
   }
 
-  :root {
-    --font-sang: "SangBleau", system-ui, sans-serif;
+  /* Italic */
+  @font-face {
+    font-family: "Gotham";
+    src: url("./assets/fonts/GothamItalic.woff2") format("woff2");
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
   }
 
-  /* ✅ Make SangBleau the default font for the whole app */
-  body {
-    font-family: var(--font-sang);
+  /* Extra Light Italic */
+@font-face {
+  font-family: "Gotham";
+  src: url("./assets/fonts/GothamExtraLightItalic.woff2") format("woff2");
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
+  :root {
+    --font-gotham: "Gotham", system-ui, sans-serif;
+  }
+}
+
+/* Utility class */
+@layer utilities {
+  .font-gotham {
+    font-family: var(--font-gotham);
   }
 }

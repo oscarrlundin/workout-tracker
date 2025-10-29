@@ -1,8 +1,0 @@
-/* Test Font: SangBleau Kingdom Medium */
-@font-face {
-  font-family: "SangBleau";
-  src: url("../assets/fonts/sangbleau-kingdom-medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
