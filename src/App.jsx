@@ -883,13 +883,7 @@ function LogTab({ useLiveQuery, showToast }) {
   function toggleExpanded(exId) {
     setExpanded((prev) => ({ ...prev, [exId]: !prev[exId] }));
   }
-<div className="p-3 space-y-2">
-  <div className="font-['Nexa'] text-lg">NEXA 400 normal</div>
-  <div className="font-['Nexa'] font-black text-lg">NEXA 900 black</div>
-  <div className="font-['Nexa'] font-extrabold text-lg">NEXA 800 extra-bold</div>
-  <div className="font-['Nexa'] italic text-lg">NEXA italic</div>
-  <div className="font-['Nexa'], monospace text-lg">If this shows as monospace, Nexa failed</div>
-</div>
+
   // Header / Modals
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -1024,7 +1018,18 @@ const durationText = formatMMSS(durationSec);
   const moodFace = MOOD.find(m => m.v === moodValue)?.glyph ?? "😐";
 
   return (
+
     <div className="text-white">
+      {/* TEMP: font test */}
+<div className="p-3 space-y-2">
+  <div className="font-['Nexa'] text-lg">NEXA 400 normal</div>
+  <div className="font-['Nexa'] font-black text-lg">NEXA 900 black</div>
+  <div className="font-['Nexa'] font-extrabold text-lg">NEXA 800 extra-bold</div>
+  <div className="font-['Nexa'] italic text-lg">NEXA italic</div>
+  <div className="text-lg" style={{ fontFamily: 'Nexa, monospace' }}>
+    If this shows as monospace, Nexa failed
+  </div>
+</div>
       {/* HEADER */}
       <div className="sticky top-0 bg-black safe-top pb-3">
         {/* Top bar: left icon, centered date, right spacer to keep perfect centering */}
