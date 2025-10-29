@@ -1067,8 +1067,8 @@ const durationText = formatMMSS(durationSec);
         {/* Big title (separate from the date) */}
         <div className="mt-6 text-center">
           {!titleEditing ? (
-           <button
-  className="font-sang text-4xl font-medium tracking-tight active:opacity-90"
+          <button
+  className="[font-family:var(--font-sang)] text-4xl font-medium tracking-tight active:opacity-90"
   onClick={() => setTitleEditing(true)}
 >
   {(workout?.title || "WORKOUT").toUpperCase()}
