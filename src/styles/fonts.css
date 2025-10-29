@@ -1,60 +1,8 @@
-/* Nexa Font Family */
-
-:root {
-  font-synthesis-weight: none;
-  font-synthesis-style: none;
-}
-
-/* Regular */
+/* Test Font: SangBleau Kingdom Medium */
 @font-face {
-  font-family: "Nexa";
-  src: url("../assets/fonts/NexaRegular.woff2") format("woff2");
-  font-weight: 400;
+  font-family: "SangBleau";
+  src: url("../assets/fonts/sangbleau-kingdom-medium.woff2") format("woff2");
+  font-weight: 500;
   font-style: normal;
-  font-display: swap;
-}
-
-/* Thin */
-@font-face {
-  font-family: "Nexa";
-  src: url("../assets/fonts/NexaThin.woff2") format("woff2");
-  font-weight: 200;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Light Italic */
-@font-face {
-  font-family: "Nexa";
-  src: url("../assets/fonts/NexaLightItalic.woff2") format("woff2");
-  font-weight: 300;
-  font-style: italic;
-  font-display: swap;
-}
-
-/* Extra Light */
-@font-face {
-  font-family: "Nexa";
-  src: url("../assets/fonts/NexaExtraLight.woff2") format("woff2");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Black (900) */
-@font-face {
-  font-family: "Nexa";
-  src: url("../assets/fonts/NexaBlack.woff2") format("woff2");
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Extra Bold Italic */
-@font-face {
-  font-family: "Nexa";
-  src: url("../assets/fonts/NexaExtraBoldItalic.woff2") format("woff2");
-  font-weight: 800;
-  font-style: italic;
   font-display: swap;
 }

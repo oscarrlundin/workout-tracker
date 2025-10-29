@@ -1,5 +1,4 @@
 // src/App.jsx
-import "./styles/fonts.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   db,
@@ -43,7 +42,6 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-
 
 
 
@@ -1021,16 +1019,6 @@ const durationText = formatMMSS(durationSec);
   return (
 
     <div className="text-white">
-      {/* TEMP: font test */}
-<div className="p-3 space-y-2">
-  <div className="font-['Nexa'] text-lg">NEXA 400 normal</div>
-  <div className="font-['Nexa'] font-black text-lg">NEXA 900 black</div>
-  <div className="font-['Nexa'] font-extrabold text-lg">NEXA 800 extra-bold</div>
-  <div className="font-['Nexa'] italic text-lg">NEXA italic</div>
-  <div className="text-lg" style={{ fontFamily: 'Nexa, monospace' }}>
-    If this shows as monospace, Nexa failed
-  </div>
-</div>
       {/* HEADER */}
       <div className="sticky top-0 bg-black safe-top pb-3">
         {/* Top bar: left icon, centered date, right spacer to keep perfect centering */}
@@ -1075,8 +1063,8 @@ const durationText = formatMMSS(durationSec);
         {/* Big title (separate from the date) */}
         <div className="mt-6 text-center">
           {!titleEditing ? (
-            <button
-  className="font-nexa text-4xl font-black tracking-tight active:opacity-90"
+           <button
+  className="font-sang text-4xl font-medium tracking-tight active:opacity-90"
   onClick={() => setTitleEditing(true)}
 >
   {(workout?.title || "WORKOUT").toUpperCase()}
