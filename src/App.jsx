@@ -1,4 +1,5 @@
 // src/App.jsx
+import "./styles/fonts.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   db,
@@ -43,7 +44,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-import "./styles/fonts.css";
+
 
 
 // NEW: Icon wrapper for your custom SVGs (src/components/Icon.jsx)

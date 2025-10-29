@@ -41,11 +41,11 @@
   font-display: swap;
 }
 
-/* Alias 800 normal to Black so 'font-extrabold' works */
+/* Black (900) */
 @font-face {
   font-family: "Nexa";
   src: url("../assets/fonts/NexaBlack.woff2") format("woff2");
-  font-weight: 800;        /* pretend Black also serves 800 */
+  font-weight: 900;
   font-style: normal;
   font-display: swap;
 }
