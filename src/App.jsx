@@ -883,7 +883,13 @@ function LogTab({ useLiveQuery, showToast }) {
   function toggleExpanded(exId) {
     setExpanded((prev) => ({ ...prev, [exId]: !prev[exId] }));
   }
-
+<div className="p-3 space-y-2">
+  <div className="font-['Nexa'] text-lg">NEXA 400 normal</div>
+  <div className="font-['Nexa'] font-black text-lg">NEXA 900 black</div>
+  <div className="font-['Nexa'] font-extrabold text-lg">NEXA 800 extra-bold</div>
+  <div className="font-['Nexa'] italic text-lg">NEXA italic</div>
+  <div className="font-['Nexa'], monospace text-lg">If this shows as monospace, Nexa failed</div>
+</div>
   // Header / Modals
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -1064,11 +1070,11 @@ const durationText = formatMMSS(durationSec);
         <div className="mt-6 text-center">
           {!titleEditing ? (
             <button
-              className="text-4xl font-extrabold tracking-tight active:opacity-90 font-['NexaBlack']"
-              onClick={() => setTitleEditing(true)}
-            >
-              {(workout?.title || "WORKOUT").toUpperCase()}
-            </button>
+  className="font-nexa text-4xl font-black tracking-tight active:opacity-90"
+  onClick={() => setTitleEditing(true)}
+>
+  {(workout?.title || "WORKOUT").toUpperCase()}
+</button>
           ) : (
             <input
               autoFocus
