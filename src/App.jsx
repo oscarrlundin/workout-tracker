@@ -235,19 +235,23 @@ export default function App() {
     showToast._t = setTimeout(() => setToast(""), 2200);
   }
 
-  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  if (!isMobile) {
-    return (
-      <div className="min-h-[100svh] grid place-items-center p-8 text-center">
-        <div>
-          <h1 className="text-2xl font-bold">Open on your phone 📱</h1>
-          <p className="text-gray-600 mt-2">
-            This app is optimized for mobile screens.
-          </p>
-        </div>
+ // Replace your current mobile-gate block with this:
+const params = new URLSearchParams(window.location.search);
+const forceDesktop = params.has("desktop"); // visit with ?desktop=1
+const isMobileUA = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+if (!forceDesktop && !isMobileUA) {
+  return (
+    <div className="min-h-[100svh] grid place-items-center p-8 text-center">
+      <div>
+        <h1 className="text-2xl font-bold">Open on your phone 📱</h1>
+        <p className="text-gray-600 mt-2">
+          This app is optimized for mobile screens.
+        </p>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   const NAV = [
     { id: "Log",       icon: "home",      label: "Log" },
