@@ -40,7 +40,9 @@
 
   :root {
     --font-gotham: "Gotham", system-ui, sans-serif;
-  }
+    --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
 }
 
 /* Utility class */

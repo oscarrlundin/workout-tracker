@@ -334,7 +334,7 @@ function ExercisesTab({ useLiveQuery }) {
   return (
     <div className="pb-24"> {/* space for bottom nav */}
       {/* Safe top gap already handled globally; this is the page header */}
-      <div className="pt-2 pb-3 sticky top-0 bg-[#0a0a0a] z-10">
+     <div className="pt-[max(env(safe-area-inset-top),1rem)] pb-3 sticky top-0 bg-[#0a0a0a] z-10">
         <div className="text-center">
           <div className="font-gotham-light uppercase tracking-[0.18em] text-[22px] text-white/80">
   EXERCISES
