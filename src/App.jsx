@@ -315,41 +315,16 @@ if (!forceDesktop && !isMobileUA) {
   );
 }
 
-/* ---------- Exercises Tab ---------- */
+/* ---------- Exercises Tab (Step 1: new layout) ---------- */
 function ExercisesTab({ useLiveQuery }) {
-  const exercises = useLiveQuery(getExercises, []);
-  const [name, setName] = useState("");
-  const [type, setType] = useState("weighted");
-  const [isTimed, setIsTimed] = useState(false);
-  const [error, setError] = useState("");
+  const exercises = useLiveQuery(getExercises, []); // live Dexie feed
+  const [query, setQuery] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
-  const [editingId, setEditingId] = useState(null);
-  const [editName, setEditName] = useState("");
-  const [editTimed, setEditTimed] = useState(false);
-
-  async function handleAdd(e) {
-    e.preventDefault();
-    try {
-      if (!name.trim()) return;
-      await addExercise({ name: name.trim(), type, isTimed });
-      setName("");
-      setType("weighted");
-      setIsTimed(false);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function saveEdit(ex) {
-    try {
-      if (editName.trim() && editName.trim() !== ex.name)
-        await updateExerciseName(ex.id, editName.trim());
-      if (editTimed !== !!ex.isTimed) await updateExerciseTimed(ex.id, editTimed);
-      setEditingId(null);
-    } catch (e) {
-      alert(e.message);
-    }
-  }
+  // Simple live filter (name only for now)
+  const list = (exercises ?? []).filter(ex =>
+    ex.name.toLowerCase().includes(query.toLowerCase())
+  );
 
   async function onDeleteExercise(id, label) {
     if (!window.confirm(`Delete "${label}"?`)) return;
@@ -357,115 +332,117 @@ function ExercisesTab({ useLiveQuery }) {
   }
 
   return (
-    <div className="overflow-x-hidden">
-      <h2 className="font-semibold">Your exercises</h2>
-
-      <form onSubmit={handleAdd} className="mt-3 grid grid-cols-1 gap-2">
-        <input
-          className="h-10 border rounded px-3 text-base w-full bg-zinc-900 border-zinc-800"
-          placeholder="e.g., Plank or Dead Hang"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            className="h-10 border rounded px-3 text-base bg-zinc-900 border-zinc-800"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-          >
-            <option value="weighted">Weighted</option>
-            <option value="bodyweight">Bodyweight</option>
-          </select>
-          <label className="h-10 border rounded px-3 flex items-center gap-2 text-base bg-zinc-900 border-zinc-800">
-            <input
-              type="checkbox"
-              checked={isTimed}
-              onChange={(e) => setIsTimed(e.target.checked)}
-            />
-            Timed
-          </label>
+    <div className="pb-24"> {/* space for bottom nav */}
+      {/* Safe top gap already handled globally; this is the page header */}
+      <div className="pt-2 pb-3 sticky top-0 bg-[#0a0a0a] z-10">
+        <div className="text-center">
+          <div className="font-gotham-light uppercase tracking-[0.18em] text-[22px] text-white/80">
+  EXERCISES
+</div>
         </div>
-        <button className="min-h-[44px] px-4 rounded bg-white text-black">
-          Add
-        </button>
-      </form>
-      {error && <p className="text-sm text-red-400">{error}</p>}
 
-      <ul className="mt-4 space-y-2">
-        {(exercises ?? []).map((ex) => (
-          <li key={ex.id} className="border border-zinc-800 rounded p-2 bg-zinc-900">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="font-medium break-words">{ex.name}</div>
-                <div className="flex gap-1 mt-1">
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-white/70">
-                    {ex.type}
-                  </span>
-                  {ex.isTimed && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-white/70">
-                      timed
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="border border-zinc-700 rounded px-2"
-                  onClick={() => {
-                    setEditingId(ex.id);
-                    setEditName(ex.name);
-                    setEditTimed(!!ex.isTimed);
-                  }}
-                >
-                  ✏️
-                </button>
-                <button
-                  className="border border-zinc-700 rounded px-2"
-                  onClick={() => onDeleteExercise(ex.id, ex.name)}
-                >
-                  🗑
-                </button>
-              </div>
-            </div>
+        {/* Search */}
+        <div className="mt-3">
+          <div className="h-10 rounded-full bg-white/5 flex items-center px-3 gap-2">
+            <Icon name="search" className="w-5 h-5 text-white/70" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search exercises…"
+              className="bg-transparent outline-none w-full text-sm placeholder-white/40"
+            />
+          </div>
+        </div>
+      </div>
 
-            {editingId === ex.id && (
-              <div className="mt-2 border-t border-zinc-800 pt-2">
-                <input
-                  className="h-10 border rounded px-3 w-full mb-2 bg-zinc-900 border-zinc-800"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                />
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={editTimed}
-                    onChange={(e) => setEditTimed(e.target.checked)}
-                  />
-                  Timed
-                </label>
-                <div className="flex gap-2 mt-2">
-                  <button
-                    className="px-3 py-1 rounded bg-white text-black"
-                    onClick={() => saveEdit(ex)}
-                  >
-                    Save
-                  </button>
-                  <button
-                    className="px-3 py-1 rounded border border-zinc-700"
-                    onClick={() => setEditingId(null)}
-                  >
-                    Cancel
-                  </button>
+      {/* List */}
+      <ul className="mt-1 space-y-1.5">
+        {list.map((ex) => (
+          <SwipeRow key={ex.id} onDelete={() => onDeleteExercise(ex.id, ex.name)}>
+            <button
+              onClick={() => {/* Step 2: open overlay sheet here */}}
+              className="w-full text-left rounded-2xl bg-[#151515] px-4 py-2 active:scale-[0.99] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+            >
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="font-medium text-[15px] truncate">{ex.name}</div>
+                  <div className="text-[11px] text-white/60 mt-0.5">
+                    {ex.type === "weighted" ? "Free weight / Machine" : "Bodyweight"}
+                  </div>
                 </div>
+                <Icon name="chevron-right" className="w-5 h-5 text-white/70 shrink-0" />
               </div>
-            )}
-          </li>
+            </button>
+          </SwipeRow>
         ))}
+        {list.length === 0 && (
+          <li className="text-center text-white/60 text-sm mt-6">No exercises yet.</li>
+        )}
       </ul>
+
+      {/* Floating + button */}
+      <button
+        onClick={() => setCreateOpen(true)}
+        aria-label="Add Exercise"
+        className="fixed left-1/2 -translate-x-1/2 z-50 grid place-items-center w-12 h-12 rounded-full bg-white text-black shadow-xl border border-white/20 active:scale-95"
+        style={{ bottom: 'calc(56px + env(safe-area-inset-bottom) + 16px)' }}
+      >
+        <Icon name="plus" className="w-7 h-7 text-black" />
+      </button>
+
+      {/* Create Exercise modal (reuses your existing add flow) */}
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Exercise">
+        <CreateExerciseForm onDone={() => setCreateOpen(false)} />
+      </Modal>
     </div>
   );
 }
 
+/* Small, contained form that uses your existing addExercise() API */
+function CreateExerciseForm({ onDone }) {
+  const [name, setName] = useState("");
+  const [type, setType] = useState("weighted");
+  const [isTimed, setIsTimed] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    try {
+      if (!name.trim()) return;
+      await addExercise({ name: name.trim(), type, isTimed }); // existing DB API
+      onDone?.();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="grid gap-3">
+      <input
+        className="h-12 border rounded bg-zinc-800 border-white/10 px-3"
+        placeholder="Exercise name (e.g., Lat Pulldown)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <select
+          className="h-12 border rounded bg-zinc-800 border-white/10 px-3"
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+        >
+          <option value="weighted">Weighted</option>
+          <option value="bodyweight">Bodyweight</option>
+        </select>
+        <label className="h-12 border rounded bg-zinc-800 border-white/10 px-3 flex items-center gap-2">
+          <input type="checkbox" checked={isTimed} onChange={(e) => setIsTimed(e.target.checked)} />
+          Timed
+        </label>
+      </div>
+      <button className="min-h-[44px] px-4 rounded bg-white text-black font-semibold">Create</button>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+    </form>
+  );
+}
 /* ---------- Templates Tab ---------- */
 function TemplatesTab({ useLiveQuery }) {
   const templates = useLiveQuery(getTemplates, []);
@@ -805,7 +782,7 @@ function SwipeRow({ children, onDelete }) {
   const p = Math.min(1, Math.max(0, -dx / THRESH));
 
   return (
-    <div className="relative overflow-hidden rounded-xl">
+    <div className="relative overflow-hidden rounded-2xl">
       {/* Background layer (reveals as you drag left) */}
       <div
         className="absolute inset-0 flex items-center justify-end pr-4 select-none"
@@ -824,7 +801,7 @@ function SwipeRow({ children, onDelete }) {
 
       {/* Foreground card */}
       <div
-        className="rounded-xl touch-pan-y select-none"
+        className="rounded-2xl touch-pan-y select-none"
         style={{
           transform: `translateX(${dx}px)`,
           transition: anim ? 'transform 200ms ease' : 'none',
