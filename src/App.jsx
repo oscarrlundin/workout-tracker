@@ -320,6 +320,7 @@ function ExercisesTab({ useLiveQuery }) {
   const exercises = useLiveQuery(getExercises, []); // live Dexie feed
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Simple live filter (name only for now)
   const list = (exercises ?? []).filter(ex =>
@@ -334,23 +335,25 @@ function ExercisesTab({ useLiveQuery }) {
   return (
     <div className="pb-24"> {/* space for bottom nav */}
       {/* Safe top gap already handled globally; this is the page header */}
-     <div className="pt-[max(env(safe-area-inset-top),1rem)] pb-3 sticky top-0 bg-[#0a0a0a] z-10">
-        <div className="text-center">
-          <div className="font-gotham-light uppercase tracking-[0.18em] text-[22px] text-white/80">
-  EXERCISES
-</div>
-        </div>
+      <div className="pt-[max(env(safe-area-inset-top),1rem)] pb-3 sticky top-0 bg-transparent z-10">
+        <div className="grid grid-cols-3 items-center">
+          {/* Left spacer to keep title perfectly centered */}
+          <div className="h-8" />
 
-        {/* Search */}
-        <div className="mt-3">
-          <div className="h-10 rounded-full bg-white/5 flex items-center px-3 gap-2">
-            <Icon name="search" className="w-5 h-5 text-white/70" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search exercises…"
-              className="bg-transparent outline-none w-full text-sm placeholder-white/40"
-            />
+          {/* Centered title */}
+          <div className="text-center">
+            <div className="font-gotham-light uppercase tracking-[0.18em] text-[22px] text-white/80">EXERCISES</div>
+          </div>
+
+          {/* Right: search icon */}
+          <div className="flex justify-end">
+            <button
+              aria-label="Search"
+              onClick={() => setSearchOpen(true)}
+              className="p-2 active:opacity-80"
+            >
+              <Icon name="search" className="w-6 h-6 text-white/80" />
+            </button>
           </div>
         </div>
       </div>
@@ -393,6 +396,19 @@ function ExercisesTab({ useLiveQuery }) {
       {/* Create Exercise modal (reuses your existing add flow) */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Exercise">
         <CreateExerciseForm onDone={() => setCreateOpen(false)} />
+      </Modal>
+      {/* Search modal */}
+      <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search">
+        <div className="h-11 rounded-full bg-white/5 flex items-center px-3 gap-2">
+          <Icon name="search" className="w-5 h-5 text-white/70" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search exercises…"
+            className="bg-transparent outline-none w-full text-sm placeholder-white/40"
+          />
+        </div>
       </Modal>
     </div>
   );
