@@ -363,7 +363,7 @@ function ExercisesTab({ useLiveQuery }) {
         <button
           onClick={() => setCreateOpen(true)}
           aria-label="Add Exercise"
-          className="w-24 h-28 rounded-xl bg-white/5 active:bg-white/10 grid place-items-center"
+          className="w-20 h-24 rounded-xl bg-white/5 active:bg-white/10 grid place-items-center"
         >
           <Icon name="plus" className="w-10 h-10 text-white/90" />
         </button>
