@@ -358,13 +358,24 @@ function ExercisesTab({ useLiveQuery }) {
         </div>
       </div>
 
+      {/* Plus card under title (top-right) */}
+      <div className="mt-3 mb-2 flex justify-end">
+        <button
+          onClick={() => setCreateOpen(true)}
+          aria-label="Add Exercise"
+          className="w-20 h-20 rounded-xl bg-white/5 active:bg-white/10 grid place-items-center"
+        >
+          <Icon name="plus" className="w-9 h-9 text-white/90" />
+        </button>
+      </div>
+
       {/* List */}
       <ul className="mt-1 space-y-1.5">
         {list.map((ex) => (
           <SwipeRow key={ex.id} onDelete={() => onDeleteExercise(ex.id, ex.name)}>
             <button
               onClick={() => {/* Step 2: open overlay sheet here */}}
-              className="w-full text-left rounded-2xl bg-[#151515] px-4 py-2 active:scale-[0.99] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+              className="w-full text-left rounded-xl bg-[#151515] px-4 py-2 active:scale-[0.99]"
             >
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
@@ -382,16 +393,6 @@ function ExercisesTab({ useLiveQuery }) {
           <li className="text-center text-white/60 text-sm mt-6">No exercises yet.</li>
         )}
       </ul>
-
-      {/* Floating + button */}
-      <button
-        onClick={() => setCreateOpen(true)}
-        aria-label="Add Exercise"
-        className="fixed left-1/2 -translate-x-1/2 z-50 grid place-items-center w-12 h-12 rounded-full bg-white text-black shadow-xl border border-white/20 active:scale-95"
-        style={{ bottom: 'calc(56px + env(safe-area-inset-bottom) + 16px)' }}
-      >
-        <Icon name="plus" className="w-7 h-7 text-black" />
-      </button>
 
       {/* Create Exercise modal (reuses your existing add flow) */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Exercise">
@@ -798,7 +799,7 @@ function SwipeRow({ children, onDelete }) {
   const p = Math.min(1, Math.max(0, -dx / THRESH));
 
   return (
-    <div className="relative overflow-hidden rounded-2xl">
+    <div className="relative overflow-hidden rounded-xl">
       {/* Background layer (reveals as you drag left) */}
       <div
         className="absolute inset-0 flex items-center justify-end pr-4 select-none"
@@ -817,7 +818,7 @@ function SwipeRow({ children, onDelete }) {
 
       {/* Foreground card */}
       <div
-        className="rounded-2xl touch-pan-y select-none"
+        className="rounded-xl touch-pan-y select-none"
         style={{
           transform: `translateX(${dx}px)`,
           transition: anim ? 'transform 200ms ease' : 'none',
