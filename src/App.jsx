@@ -322,6 +322,10 @@ function ExercisesTab({ useLiveQuery }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // Step 2: Exercise details overlay state
+  const [selectedExercise, setSelectedExercise] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+
   // Simple live filter (name only for now)
   const list = (exercises ?? []).filter(ex =>
     ex.name.toLowerCase().includes(query.toLowerCase())
@@ -374,7 +378,7 @@ function ExercisesTab({ useLiveQuery }) {
         {list.map((ex) => (
           <SwipeRow key={ex.id} onDelete={() => onDeleteExercise(ex.id, ex.name)}>
             <button
-              onClick={() => {/* Step 2: open overlay sheet here */}}
+              onClick={() => setSelectedExercise(ex)}
               className="w-full text-left rounded-xl bg-[#151515] px-4 py-2 active:scale-[0.99]"
             >
               <div className="flex items-center justify-between">
@@ -410,6 +414,130 @@ function ExercisesTab({ useLiveQuery }) {
             className="bg-transparent outline-none w-full text-sm placeholder-white/40"
           />
         </div>
+      </Modal>
+      {/* Exercise details overlay (Step 2) */}
+      <Modal
+        open={!!selectedExercise}
+        onClose={() => {
+          setSelectedExercise(null);
+          setEditMode(false);
+        }}
+        title={editMode ? "Edit Exercise" : selectedExercise?.name || "Exercise"}
+      >
+        {selectedExercise && (
+          <div className="space-y-4">
+            {/* Basics */}
+            <section>
+              <h4 className="text-white/70 text-sm mb-1">Basics</h4>
+              {!editMode ? (
+                <div className="text-sm text-white/80 space-y-1">
+                  <p>Type: {selectedExercise.type}</p>
+                  <p>{selectedExercise.isTimed ? "Timed exercise" : "Not timed"}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <input
+                    className="w-full h-10 rounded bg-zinc-800 border border-white/10 px-3"
+                    value={selectedExercise.name}
+                    onChange={(e) =>
+                      setSelectedExercise((prev) => ({ ...prev, name: e.target.value }))
+                    }
+                  />
+                  <select
+                    className="w-full h-10 rounded bg-zinc-800 border border-white/10 px-3"
+                    value={selectedExercise.type}
+                    onChange={(e) =>
+                      setSelectedExercise((prev) => ({ ...prev, type: e.target.value }))
+                    }
+                  >
+                    <option value="weighted">Weighted</option>
+                    <option value="bodyweight">Bodyweight</option>
+                  </select>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedExercise.isTimed}
+                      onChange={(e) =>
+                        setSelectedExercise((prev) => ({
+                          ...prev,
+                          isTimed: e.target.checked,
+                        }))
+                      }
+                    />
+                    Timed exercise
+                  </label>
+                </div>
+              )}
+            </section>
+
+            {/* Performance (placeholder for Step 3) */}
+            <section className="border-t border-white/10 pt-2">
+              <h4 className="text-white/70 text-sm mb-1">Performance</h4>
+              <p className="text-sm text-white/80">Last performed: —</p>
+              <p className="text-sm text-white/80">PR: —</p>
+            </section>
+
+            {/* Notes (read-only for now) */}
+            <section className="border-t border-white/10 pt-2">
+              <h4 className="text-white/70 text-sm mb-1">Notes</h4>
+              <p className="text-sm text-white/80 italic">No notes yet.</p>
+            </section>
+
+            {/* Actions */}
+            <section className="border-t border-white/10 pt-2 space-y-2">
+              {!editMode ? (
+                <>
+                  <button
+                    className="w-full h-10 rounded bg-white text-black font-semibold active:scale-[0.99]"
+                    onClick={() => setEditMode(true)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="w-full h-10 rounded bg-red-600/80 text-white active:scale-[0.99]"
+                    onClick={async () => {
+                      if (
+                        window.confirm(
+                          `Delete exercise "${selectedExercise.name}"? This cannot be undone.`
+                        )
+                      ) {
+                        await deleteExercise(selectedExercise.id);
+                        setSelectedExercise(null);
+                      }
+                    }}
+                  >
+                    Delete Exercise
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="w-full h-10 rounded bg-white text-black font-semibold active:scale-[0.99]"
+                    onClick={async () => {
+                      await updateExerciseName(
+                        selectedExercise.id,
+                        selectedExercise.name.trim()
+                      );
+                      await updateExerciseTimed(
+                        selectedExercise.id,
+                        selectedExercise.isTimed
+                      );
+                      setEditMode(false);
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="w-full h-10 rounded bg-white/10 text-white active:scale-[0.99]"
+                    onClick={() => setEditMode(false)}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+            </section>
+          </div>
+        )}
       </Modal>
     </div>
   );
