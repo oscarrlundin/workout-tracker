@@ -135,22 +135,43 @@ function parseMMSS(str) {
   return null; // bad input
 }
 
-function Modal({ open, onClose, title, children }) {
+function Modal({ open, onClose, title, children, variant = "dialog" }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center">
-      <div className="w-full max-w-xl bg-zinc-900 text-white rounded-t-2xl sm:rounded-2xl p-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">{title}</h3>
-          <button
-            className="px-3 py-1 rounded bg-zinc-800 border border-white/10"
-            onClick={onClose}
-          >
-            Close
-          </button>
+    <div
+      className="fixed inset-0 z-50 bg-black/60"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      {variant === "sheet" ? (
+        <div
+          className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-black text-white p-6"
+          onClick={(e) => e.stopPropagation()}
+          style={{ maxHeight: '90vh', overflowY: 'auto' }}
+        >
+          <div className="mx-auto h-1 w-10 rounded-full bg-white/15 mb-4" />
+          {children}
         </div>
-        <div className="mt-3">{children}</div>
-      </div>
+      ) : (
+        <div
+          className="w-full max-w-xl bg-zinc-900 text-white rounded-t-2xl sm:rounded-2xl p-4 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {(title || title === "") && (
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">{title}</h3>
+              <button
+                className="px-3 py-1 rounded bg-zinc-800 border border-white/10"
+                onClick={onClose}
+              >
+                Close
+              </button>
+            </div>
+          )}
+          <div className={title ? "mt-3" : ""}>{children}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -454,82 +475,26 @@ function ExercisesTab({ useLiveQuery }) {
       <Modal
         open={!!selectedExercise}
         onClose={() => { setSelectedExercise(null); setEditMode(false); }}
-        title={null}
+        variant="sheet"
       >
         {selectedExercise && (
           <div className="px-1">
             {/* Top row: name left, type right */}
             <div className="flex items-start justify-between">
               <div>
-                {!editMode ? (
-                  <>
-                    <div className="font-gotham-light text-2xl">{selectedExercise.name}</div>
-                    <div className="text-white/70 text-sm mt-0.5">{selectedExercise.muscleGroup || "—"}</div>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      className="w-full h-10 rounded bg-zinc-800 border border-white/10 px-3"
-                      value={selectedExercise.name}
-                      onChange={(e) => setSelectedExercise((p) => ({ ...p, name: e.target.value }))}
-                    />
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <select
-                        className="h-10 rounded bg-zinc-800 border border-white/10 px-3"
-                        value={selectedExercise.muscleGroup || ""}
-                        onChange={(e) => setSelectedExercise((p) => ({ ...p, muscleGroup: e.target.value || null }))}
-                      >
-                        <option value="">Muscle group…</option>
-                        <option>Chest</option>
-                        <option>Back</option>
-                        <option>Legs</option>
-                        <option>Biceps</option>
-                        <option>Triceps</option>
-                        <option>Core</option>
-                      </select>
-                      <select
-                        className="h-10 rounded bg-zinc-800 border border-white/10 px-3"
-                        value={selectedExercise.type}
-                        onChange={(e) => setSelectedExercise((p) => ({ ...p, type: e.target.value }))}
-                      >
-                        <option value="weighted">Weighted</option>
-                        <option value="bodyweight">Bodyweight</option>
-                      </select>
-                    </div>
-                  </>
-                )}
+                <div className="font-gotham-light text-2xl">{selectedExercise.name}</div>
+                <div className="text-white/70 text-sm mt-0.5">{selectedExercise.muscleGroup || "—"}</div>
               </div>
               <div className="text-right">
-                {!editMode ? (
-                  <div className="text-white/70 text-sm">
-                    {selectedExercise.isTimed ? "Timed" : (selectedExercise.type === "weighted" ? "Weighted" : "Bodyweight")}
-                  </div>
-                ) : (
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedExercise.isTimed}
-                      onChange={(e) => setSelectedExercise((p) => ({ ...p, isTimed: e.target.checked }))}
-                    />
-                    Timed
-                  </label>
-                )}
+                <div className="text-white/70 text-sm">
+                  {selectedExercise.isTimed ? "Timed" : (selectedExercise.type === "weighted" ? "Weighted" : "Bodyweight")}
+                </div>
               </div>
             </div>
 
             {/* Description */}
             <div className="mt-4">
-              {!editMode ? (
-                <p className="text-white/80 leading-relaxed">{selectedExercise.description || "No description yet."}</p>
-              ) : (
-                <textarea
-                  rows={4}
-                  className="w-full rounded bg-zinc-800 border border-white/10 px-3 py-2"
-                  value={selectedExercise.description || ""}
-                  onChange={(e) => setSelectedExercise((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="Describe how to perform the exercise…"
-                />
-              )}
+              <p className="text-white/80 leading-relaxed">{selectedExercise.description || "No description yet."}</p>
             </div>
 
             {/* Bottom row: left = total reps, right = trophy + PR + last performed */}
@@ -553,36 +518,6 @@ function ExercisesTab({ useLiveQuery }) {
                   <div>{overlayLastDate ? new Date(overlayLastDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase() : "NEVER"}</div>
                 </div>
               </div>
-            </div>
-
-            {/* Actions */}
-            <div className="mt-6 grid grid-cols-2 gap-2">
-              {!editMode ? (
-                <>
-                  <button className="h-10 rounded bg-white text-black font-semibold active:scale-[0.99]" onClick={() => setEditMode(true)}>Edit</button>
-                  <button className="h-10 rounded bg-red-600/80 text-white active:scale-[0.99]" onClick={async () => {
-                    if (window.confirm(`Delete exercise "${selectedExercise.name}"? This cannot be undone.`)) {
-                      await deleteExercise(selectedExercise.id);
-                      setSelectedExercise(null);
-                    }
-                  }}>Delete</button>
-                </>
-              ) : (
-                <>
-                  <button className="h-10 rounded bg-white text-black font-semibold active:scale-[0.99]" onClick={async () => {
-                    const patch = {
-                      name: selectedExercise.name.trim(),
-                      type: selectedExercise.type,
-                      isTimed: !!selectedExercise.isTimed,
-                      muscleGroup: selectedExercise.muscleGroup || null,
-                      description: selectedExercise.description || null,
-                    };
-                    await db.exercises.update(selectedExercise.id, patch);
-                    setEditMode(false);
-                  }}>Save</button>
-                  <button className="h-10 rounded bg-white/10 text-white active:scale-[0.99]" onClick={() => setEditMode(false)}>Cancel</button>
-                </>
-              )}
             </div>
           </div>
         )}
