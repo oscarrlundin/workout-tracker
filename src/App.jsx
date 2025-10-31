@@ -325,6 +325,10 @@ function ExercisesTab({ useLiveQuery }) {
   // Step 2: Exercise details overlay state
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [editMode, setEditMode] = useState(false);
+  // Overlay metrics state (Step 2 redesign)
+  const [overlayPR, setOverlayPR] = useState(null); // { bestWeight, bestDurationSec }
+  const [overlayLastDate, setOverlayLastDate] = useState(null); // ISO string or null
+  const [overlayTotalReps, setOverlayTotalReps] = useState(null); // number | null
 
   // Simple live filter (name only for now)
   const list = (exercises ?? []).filter(ex =>
@@ -335,6 +339,37 @@ function ExercisesTab({ useLiveQuery }) {
     if (!window.confirm(`Delete "${label}"?`)) return;
     await deleteExercise(id);
   }
+
+  // Step 2 overlay: Load computed metrics when exercise is selected
+  useEffect(() => {
+    (async () => {
+      if (!selectedExercise) {
+        setOverlayPR(null); setOverlayLastDate(null); setOverlayTotalReps(null);
+        return;
+      }
+      // PR
+      const pr = await getPR(Number(selectedExercise.id));
+      setOverlayPR(pr || null);
+
+      // Sets for this exercise
+      const allSets = await getSetsForExercise(Number(selectedExercise.id));
+      // total reps (non-timed only)
+      const repSum = allSets.reduce((sum, s) => sum + (Number(s.reps) || 0), 0);
+      setOverlayTotalReps(repSum);
+
+      // last performed date via related workouts
+      const workoutIds = [...new Set(allSets.map(s => s.workoutId))];
+      if (workoutIds.length === 0) { setOverlayLastDate(null); return; }
+      const workouts = await db.workouts.bulkGet(workoutIds);
+      const latest = workouts
+        .filter(Boolean)
+        .map(w => w.dateISO)
+        .filter(Boolean)
+        .sort()
+        .pop() || null;
+      setOverlayLastDate(latest);
+    })();
+  }, [selectedExercise]);
 
   return (
     <div className="pb-24"> {/* space for bottom nav */}
@@ -415,127 +450,140 @@ function ExercisesTab({ useLiveQuery }) {
           />
         </div>
       </Modal>
-      {/* Exercise details overlay (Step 2) */}
+      {/* Exercise details overlay (Step 2 redesign) */}
       <Modal
         open={!!selectedExercise}
-        onClose={() => {
-          setSelectedExercise(null);
-          setEditMode(false);
-        }}
-        title={editMode ? "Edit Exercise" : selectedExercise?.name || "Exercise"}
+        onClose={() => { setSelectedExercise(null); setEditMode(false); }}
+        title={null}
       >
         {selectedExercise && (
-          <div className="space-y-4">
-            {/* Basics */}
-            <section>
-              <h4 className="text-white/70 text-sm mb-1">Basics</h4>
-              {!editMode ? (
-                <div className="text-sm text-white/80 space-y-1">
-                  <p>Type: {selectedExercise.type}</p>
-                  <p>{selectedExercise.isTimed ? "Timed exercise" : "Not timed"}</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <input
-                    className="w-full h-10 rounded bg-zinc-800 border border-white/10 px-3"
-                    value={selectedExercise.name}
-                    onChange={(e) =>
-                      setSelectedExercise((prev) => ({ ...prev, name: e.target.value }))
-                    }
-                  />
-                  <select
-                    className="w-full h-10 rounded bg-zinc-800 border border-white/10 px-3"
-                    value={selectedExercise.type}
-                    onChange={(e) =>
-                      setSelectedExercise((prev) => ({ ...prev, type: e.target.value }))
-                    }
-                  >
-                    <option value="weighted">Weighted</option>
-                    <option value="bodyweight">Bodyweight</option>
-                  </select>
-                  <label className="flex items-center gap-2 text-sm">
+          <div className="px-1">
+            {/* Top row: name left, type right */}
+            <div className="flex items-start justify-between">
+              <div>
+                {!editMode ? (
+                  <>
+                    <div className="font-gotham-light text-2xl">{selectedExercise.name}</div>
+                    <div className="text-white/70 text-sm mt-0.5">{selectedExercise.muscleGroup || "—"}</div>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      className="w-full h-10 rounded bg-zinc-800 border border-white/10 px-3"
+                      value={selectedExercise.name}
+                      onChange={(e) => setSelectedExercise((p) => ({ ...p, name: e.target.value }))}
+                    />
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <select
+                        className="h-10 rounded bg-zinc-800 border border-white/10 px-3"
+                        value={selectedExercise.muscleGroup || ""}
+                        onChange={(e) => setSelectedExercise((p) => ({ ...p, muscleGroup: e.target.value || null }))}
+                      >
+                        <option value="">Muscle group…</option>
+                        <option>Chest</option>
+                        <option>Back</option>
+                        <option>Legs</option>
+                        <option>Biceps</option>
+                        <option>Triceps</option>
+                        <option>Core</option>
+                      </select>
+                      <select
+                        className="h-10 rounded bg-zinc-800 border border-white/10 px-3"
+                        value={selectedExercise.type}
+                        onChange={(e) => setSelectedExercise((p) => ({ ...p, type: e.target.value }))}
+                      >
+                        <option value="weighted">Weighted</option>
+                        <option value="bodyweight">Bodyweight</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="text-right">
+                {!editMode ? (
+                  <div className="text-white/70 text-sm">
+                    {selectedExercise.isTimed ? "Timed" : (selectedExercise.type === "weighted" ? "Weighted" : "Bodyweight")}
+                  </div>
+                ) : (
+                  <label className="inline-flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
-                      checked={selectedExercise.isTimed}
-                      onChange={(e) =>
-                        setSelectedExercise((prev) => ({
-                          ...prev,
-                          isTimed: e.target.checked,
-                        }))
-                      }
+                      checked={!!selectedExercise.isTimed}
+                      onChange={(e) => setSelectedExercise((p) => ({ ...p, isTimed: e.target.checked }))}
                     />
-                    Timed exercise
+                    Timed
                   </label>
-                </div>
+                )}
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="mt-4">
+              {!editMode ? (
+                <p className="text-white/80 leading-relaxed">{selectedExercise.description || "No description yet."}</p>
+              ) : (
+                <textarea
+                  rows={4}
+                  className="w-full rounded bg-zinc-800 border border-white/10 px-3 py-2"
+                  value={selectedExercise.description || ""}
+                  onChange={(e) => setSelectedExercise((p) => ({ ...p, description: e.target.value }))}
+                  placeholder="Describe how to perform the exercise…"
+                />
               )}
-            </section>
+            </div>
 
-            {/* Performance (placeholder for Step 3) */}
-            <section className="border-t border-white/10 pt-2">
-              <h4 className="text-white/70 text-sm mb-1">Performance</h4>
-              <p className="text-sm text-white/80">Last performed: —</p>
-              <p className="text-sm text-white/80">PR: —</p>
-            </section>
+            {/* Bottom row: left = total reps, right = trophy + PR + last performed */}
+            <div className="mt-6 grid grid-cols-2 gap-4 items-end">
+              <div className="flex items-center gap-2">
+                <Icon name="reps" className="w-7 h-7 text-white/90" />
+                <div className="text-2xl leading-none">{selectedExercise.isTimed ? "—" : (overlayTotalReps ?? 0)}</div>
+              </div>
 
-            {/* Notes (read-only for now) */}
-            <section className="border-t border-white/10 pt-2">
-              <h4 className="text-white/70 text-sm mb-1">Notes</h4>
-              <p className="text-sm text-white/80 italic">No notes yet.</p>
-            </section>
+              <div className="text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <Icon name="trophy" className="w-9 h-9 text-white" />
+                  <div className="text-2xl leading-none font-semibold">
+                    {selectedExercise.isTimed
+                      ? (overlayPR?.bestDurationSec != null ? `${overlayPR.bestDurationSec} s` : "—")
+                      : (overlayPR?.bestWeight != null ? `${overlayPR.bestWeight} kg` : "—")}
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-white/70">
+                  <div>LAST PERFORMED</div>
+                  <div>{overlayLastDate ? new Date(overlayLastDate).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase() : "NEVER"}</div>
+                </div>
+              </div>
+            </div>
 
             {/* Actions */}
-            <section className="border-t border-white/10 pt-2 space-y-2">
+            <div className="mt-6 grid grid-cols-2 gap-2">
               {!editMode ? (
                 <>
-                  <button
-                    className="w-full h-10 rounded bg-white text-black font-semibold active:scale-[0.99]"
-                    onClick={() => setEditMode(true)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="w-full h-10 rounded bg-red-600/80 text-white active:scale-[0.99]"
-                    onClick={async () => {
-                      if (
-                        window.confirm(
-                          `Delete exercise "${selectedExercise.name}"? This cannot be undone.`
-                        )
-                      ) {
-                        await deleteExercise(selectedExercise.id);
-                        setSelectedExercise(null);
-                      }
-                    }}
-                  >
-                    Delete Exercise
-                  </button>
+                  <button className="h-10 rounded bg-white text-black font-semibold active:scale-[0.99]" onClick={() => setEditMode(true)}>Edit</button>
+                  <button className="h-10 rounded bg-red-600/80 text-white active:scale-[0.99]" onClick={async () => {
+                    if (window.confirm(`Delete exercise "${selectedExercise.name}"? This cannot be undone.`)) {
+                      await deleteExercise(selectedExercise.id);
+                      setSelectedExercise(null);
+                    }
+                  }}>Delete</button>
                 </>
               ) : (
                 <>
-                  <button
-                    className="w-full h-10 rounded bg-white text-black font-semibold active:scale-[0.99]"
-                    onClick={async () => {
-                      await updateExerciseName(
-                        selectedExercise.id,
-                        selectedExercise.name.trim()
-                      );
-                      await updateExerciseTimed(
-                        selectedExercise.id,
-                        selectedExercise.isTimed
-                      );
-                      setEditMode(false);
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    className="w-full h-10 rounded bg-white/10 text-white active:scale-[0.99]"
-                    onClick={() => setEditMode(false)}
-                  >
-                    Cancel
-                  </button>
+                  <button className="h-10 rounded bg-white text-black font-semibold active:scale-[0.99]" onClick={async () => {
+                    const patch = {
+                      name: selectedExercise.name.trim(),
+                      type: selectedExercise.type,
+                      isTimed: !!selectedExercise.isTimed,
+                      muscleGroup: selectedExercise.muscleGroup || null,
+                      description: selectedExercise.description || null,
+                    };
+                    await db.exercises.update(selectedExercise.id, patch);
+                    setEditMode(false);
+                  }}>Save</button>
+                  <button className="h-10 rounded bg-white/10 text-white active:scale-[0.99]" onClick={() => setEditMode(false)}>Cancel</button>
                 </>
               )}
-            </section>
+            </div>
           </div>
         )}
       </Modal>
@@ -549,12 +597,14 @@ function CreateExerciseForm({ onDone }) {
   const [type, setType] = useState("weighted");
   const [isTimed, setIsTimed] = useState(false);
   const [error, setError] = useState("");
+  const [muscleGroup, setMuscleGroup] = useState("");
+  const [description, setDescription] = useState("");
 
   async function handleSubmit(e) {
     e.preventDefault();
     try {
       if (!name.trim()) return;
-      await addExercise({ name: name.trim(), type, isTimed }); // existing DB API
+      await addExercise({ name: name.trim(), type, isTimed, muscleGroup: muscleGroup || null, description: description || null });
       onDone?.();
     } catch (err) {
       setError(err.message);
@@ -583,6 +633,26 @@ function CreateExerciseForm({ onDone }) {
           Timed
         </label>
       </div>
+      {/* New fields for muscle group and description */}
+      <select
+        className="h-12 border rounded bg-zinc-800 border-white/10 px-3"
+        value={muscleGroup}
+        onChange={(e) => setMuscleGroup(e.target.value)}
+      >
+        <option value="">Muscle group…</option>
+        <option>Chest</option>
+        <option>Back</option>
+        <option>Legs</option>
+        <option>Biceps</option>
+        <option>Triceps</option>
+        <option>Core</option>
+      </select>
+      <textarea
+        className="h-24 border rounded bg-zinc-800 border-white/10 px-3 py-2"
+        placeholder="Short description (optional)"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+      />
       <button className="min-h-[44px] px-4 rounded bg-white text-black font-semibold">Create</button>
       {error && <p className="text-sm text-red-400">{error}</p>}
     </form>
